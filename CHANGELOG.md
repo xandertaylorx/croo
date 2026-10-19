@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Setup checks the provider's model list and falls back if the default model isn't available for your key
+
 ## 0.1.3
 
 - Existing profile with no key now shows the provider list instead of asking for an OpenAI key

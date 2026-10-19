@@ -2,7 +2,7 @@ import readline from 'node:readline'
 import pkg from '../package.json' with { type: 'json' }
 import { HELP, parseArgs, type Args } from './args.js'
 import { runTurn, Cancelled } from './agent.js'
-import { configPath, defaultConfig, isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig } from './config.js'
+import { DEFAULT_BASE_URLS, configPath, defaultConfig, isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig } from './config.js'
 import { Permissions } from './permissions.js'
 import { buildSystemPrompt } from './prompt.js'
 import { demoProvider, DEMO_PROFILE } from './providers/demo.js'
@@ -49,6 +49,27 @@ const ask: Ask = (question, opts) => {
 }
 
 // ---------- setup ----------
+
+/** Ask the provider which models this key can use; keep the default if it is listed, else pick a chat model. */
+async function pickAvailableModel(profile: Profile): Promise<string> {
+  const base = (profile.baseUrl ?? DEFAULT_BASE_URLS.openai).replace(/\/+$/, '')
+  try {
+    const res = await fetch(`${base}/models`, {
+      headers: profile.apiKey ? { authorization: `Bearer ${profile.apiKey}` } : {},
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) return profile.model
+    const ids: string[] = ((await res.json()) as any).data?.map((m: any) => m.id) ?? []
+    if (!ids.length || ids.includes(profile.model)) return profile.model
+    const chat = ids.filter((id) => !/whisper|tts|guard|embed|moderation|image|dall|audio|transcri|rerank/i.test(id))
+    const pick = chat.find((id) => /gpt-oss-120b|llama-3\.3-70b|gpt-4o|large|chat/i.test(id)) ?? chat[0]
+    if (pick) {
+      console.log(theme.muted(`  ${profile.model} isn't available on this key, using ${pick}.`))
+      return pick
+    }
+  } catch {}
+  return profile.model
+}
 
 async function askKey(a: Ask, label: string): Promise<string> {
   for (;;) {
@@ -105,6 +126,8 @@ export async function setupProfile(a: Ask, cfg: Config, opts: { allowDemo?: bool
     if (!preset!.noKey) profile.apiKey = await askKey(a, preset!.label)
     base = preset!.id
   }
+
+  if (profile.type === 'openai') profile.model = await pickAvailableModel(profile)
 
   let name = base
   for (let i = 2; cfg.profiles[name]; i++) name = `${base}${i}`
