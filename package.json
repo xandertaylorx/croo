@@ -1,0 +1,52 @@
+{
+  "name": "croo",
+  "version": "0.1.0",
+  "description": "Croo: a quick, minimal, open-source terminal AI coding agent. Bring your own API key.",
+  "type": "module",
+  "bin": {
+    "croo": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "coding",
+    "llm",
+    "openai",
+    "anthropic",
+    "gemini",
+    "ollama"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xandertaylorx/croo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xandertaylorx/croo/issues"
+  },
+  "homepage": "https://github.com/xandertaylorx/croo#readme",
+  "license": "MIT",
+  "author": "Xander Taylor",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsup": "^9.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
