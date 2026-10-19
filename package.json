@@ -1,6 +1,6 @@
 {
   "name": "croo-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Croo: a quick, minimal, open-source terminal AI coding agent. Bring your own API key.",
   "type": "module",
   "bin": {

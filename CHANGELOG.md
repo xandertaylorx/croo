@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- First run now shows a provider list (OpenAI, Anthropic, Gemini, Groq, OpenRouter, DeepSeek, xAI, Mistral, Together, Ollama, or any OpenAI-compatible URL); pick one and paste your key
+- A profile with no key now asks for it instead of exiting with an error
+
 ## 0.1.1
 
 - `croo --demo`: explore the interface with a scripted fake model, no API key needed (also offered on first run)

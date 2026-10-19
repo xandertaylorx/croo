@@ -2,13 +2,14 @@ import readline from 'node:readline'
 import pkg from '../package.json' with { type: 'json' }
 import { HELP, parseArgs, type Args } from './args.js'
 import { runTurn, Cancelled } from './agent.js'
-import { DEFAULT_BASE_URLS, configPath, defaultConfig, loadConfig, maskKey, saveConfig } from './config.js'
+import { configPath, defaultConfig, isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig } from './config.js'
 import { Permissions } from './permissions.js'
 import { buildSystemPrompt } from './prompt.js'
 import { demoProvider, DEMO_PROFILE } from './providers/demo.js'
 import { createProvider } from './providers/index.js'
+import { PRESETS, type Preset } from './providers/presets.js'
 import { loadLastSession, newSession, saveSession } from './session.js'
-import type { Config, Msg, Profile, Provider, ProviderType } from './types.js'
+import type { Config, Msg, Profile, Provider } from './types.js'
 import { frogPet } from './ui/pet.js'
 import { Ui } from './ui/render.js'
 import { theme } from './ui/theme.js'
@@ -49,28 +50,67 @@ const ask: Ask = (question, opts) => {
 
 // ---------- setup ----------
 
-const DEFAULT_MODELS: Record<ProviderType, string> = { openai: 'gpt-4o', anthropic: 'claude-sonnet-4-5', gemini: 'gemini-2.5-pro' }
-
-export async function setupProfile(a: Ask, cfg: Config): Promise<Config> {
-  console.log(theme.bold('\nSet up a provider') + theme.muted('  (stored in ' + configPath() + ', mode 600)\n'))
-  console.log('  1) OpenAI-compatible  (OpenAI, OpenRouter, Groq, Ollama, LM Studio, ...)\n  2) Anthropic\n  3) Google Gemini\n')
-  const choice = (await a('Provider [1]: ')).trim() || '1'
-  const type: ProviderType = choice === '2' ? 'anthropic' : choice === '3' ? 'gemini' : 'openai'
-  const profile: Profile = { type, model: '' }
-  if (type === 'openai') {
-    const url = (await a(`Base URL [${DEFAULT_BASE_URLS.openai}] (Ollama: http://localhost:11434/v1): `)).trim()
-    if (url) profile.baseUrl = url
+async function askKey(a: Ask, label: string): Promise<string> {
+  for (;;) {
+    const key = (await a(`Paste your ${label} API key: `, { secret: true })).trim()
+    if (key) return key
+    if (!process.stdin.isTTY) return ''
+    console.log(theme.muted('  (nothing pasted, try again)'))
   }
-  const key = (await a('API key (leave blank to use an env var, or for local models): ', { secret: true })).trim()
-  if (key) profile.apiKey = key
-  profile.model = (await a(`Model [${DEFAULT_MODELS[type]}]: `)).trim() || DEFAULT_MODELS[type]
+}
 
-  let base = type === 'openai' && profile.baseUrl ? new URL(profile.baseUrl).hostname.replace(/^api\./, '').split('.')[0] : type
+/** Pick a provider from the list, paste a key, done. Returns null if the user chose demo mode. */
+export async function setupProfile(a: Ask, cfg: Config, opts: { allowDemo?: boolean } = {}): Promise<Config | null> {
+  console.log(theme.bold('\nPick a provider\n'))
+  PRESETS.forEach((p, i) => console.log(`  ${String(i + 1).padStart(2)}) ${p.label}`))
+  const otherN = PRESETS.length + 1
+  console.log(`  ${String(otherN).padStart(2)}) Other (any OpenAI-compatible URL)`)
+  if (opts.allowDemo) console.log(`  ${String(otherN + 1).padStart(2)}) Demo mode (no key)`)
+  console.log()
+
+  let preset: Preset | undefined
+  let custom = false
+  for (;;) {
+    const raw = (await a('Number: ')).trim().toLowerCase()
+    if (!raw && !process.stdin.isTTY) return null
+    const n = Number(raw)
+    preset = Number.isInteger(n) ? PRESETS[n - 1] : PRESETS.find((p) => p.id === raw)
+    if (preset) break
+    if (n === otherN) {
+      custom = true
+      break
+    }
+    if (opts.allowDemo && (n === otherN + 1 || raw.startsWith('d'))) return null
+    console.log(theme.muted('  Pick a number from the list.'))
+  }
+
+  let profile: Profile
+  let base: string
+  if (custom) {
+    let url = ''
+    while (!url) {
+      url = (await a('Base URL (e.g. https://api.example.com/v1): ')).trim()
+      try {
+        new URL(url)
+      } catch {
+        url = ''
+      }
+    }
+    profile = { type: 'openai', baseUrl: url, model: (await a('Model name: ')).trim() || 'gpt-4o' }
+    if (!isLocalUrl(url)) profile.apiKey = await askKey(a, new URL(url).hostname)
+    base = new URL(url).hostname.replace(/^api\./, '').split('.')[0]
+  } else {
+    profile = { type: preset!.type, model: preset!.model }
+    if (preset!.baseUrl) profile.baseUrl = preset!.baseUrl
+    if (!preset!.noKey) profile.apiKey = await askKey(a, preset!.label)
+    base = preset!.id
+  }
+
   let name = base
   for (let i = 2; cfg.profiles[name]; i++) name = `${base}${i}`
   const next: Config = { ...cfg, profiles: { ...cfg.profiles, [name]: profile }, activeProfile: name }
   saveConfig(next)
-  console.log(theme.accent(`\nSaved profile "${name}".\n`))
+  console.log(theme.accent(`\nSaved. Using ${profile.model}. Change it any time with /model.\n`))
   return next
 }
 
@@ -88,13 +128,6 @@ async function main() {
   if (args.version) return console.log(VERSION)
 
   let cfg = args.demo ? null : loadConfig()
-  if (!args.demo && (!cfg || !Object.keys(cfg.profiles).length)) {
-    if (process.stdin.isTTY) {
-      console.log(theme.accent(theme.bold('Welcome to Croo.')) + ' No config yet.')
-      const choice = await ask('Set up a provider now, or look around in demo mode (no API key)? [setup/demo]: ')
-      if (choice.trim().toLowerCase().startsWith('d')) args.demo = true
-    }
-  }
   if (args.demo) {
     cfg = { ...defaultConfig(), activeProfile: 'demo', profiles: { demo: DEMO_PROFILE } }
   } else if (!cfg || !Object.keys(cfg.profiles).length) {
@@ -102,12 +135,29 @@ async function main() {
       console.error(`No config found. Run \`croo\` in a terminal to set one up, or create ${configPath()}.`)
       process.exit(1)
     }
-    cfg = await setupProfile(ask, cfg ?? defaultConfig())
+    console.log(theme.accent(theme.bold('Welcome to Croo.')))
+    const made = await setupProfile(ask, cfg ?? defaultConfig(), { allowDemo: true })
+    if (made) cfg = made
+    else {
+      args.demo = true
+      cfg = { ...defaultConfig(), activeProfile: 'demo', profiles: { demo: DEMO_PROFILE } }
+    }
   }
   let profileName = args.profile ?? cfg.activeProfile
   if (!cfg.profiles[profileName]) {
     console.error(`Unknown profile "${profileName}". Available: ${Object.keys(cfg.profiles).join(', ')}`)
     process.exit(1)
+  }
+  // Active profile has no key anywhere: just ask for it instead of erroring.
+  const needsKey = (p: Profile) => !args.demo && !resolveApiKey(p) && !(p.type === 'openai' && isLocalUrl(p.baseUrl))
+  if (needsKey(cfg.profiles[profileName]) && process.stdin.isTTY) {
+    const p = cfg.profiles[profileName]
+    console.log(theme.muted(`No API key for "${profileName}" yet.`))
+    const key = await askKey(ask, profileName)
+    if (key) {
+      p.apiKey = key
+      saveConfig(cfg)
+    }
   }
 
   const ui = new Ui({ theme, pet: frogPet, showPet: cfg.pet && !args.noPet, animations: cfg.animations, ask })
@@ -260,7 +310,7 @@ async function main() {
     },
     model: async (arg) => {
       if (arg === 'add') {
-        cfg = await setupProfile(ask, cfg!)
+        cfg = (await setupProfile(ask, cfg!)) ?? cfg!
         arg = cfg.activeProfile
       }
       if (!arg) {
