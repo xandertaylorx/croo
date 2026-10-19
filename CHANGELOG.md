@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Existing profile with no key now shows the provider list instead of asking for an OpenAI key
+
 ## 0.1.2
 
 - First run now shows a provider list (OpenAI, Anthropic, Gemini, Groq, OpenRouter, DeepSeek, xAI, Mistral, Together, Ollama, or any OpenAI-compatible URL); pick one and paste your key

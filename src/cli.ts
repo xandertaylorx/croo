@@ -148,15 +148,19 @@ async function main() {
     console.error(`Unknown profile "${profileName}". Available: ${Object.keys(cfg.profiles).join(', ')}`)
     process.exit(1)
   }
-  // Active profile has no key anywhere: just ask for it instead of erroring.
+  // Active profile has no key anywhere: show the provider list again instead of erroring.
   const needsKey = (p: Profile) => !args.demo && !resolveApiKey(p) && !(p.type === 'openai' && isLocalUrl(p.baseUrl))
   if (needsKey(cfg.profiles[profileName]) && process.stdin.isTTY) {
-    const p = cfg.profiles[profileName]
-    console.log(theme.muted(`No API key for "${profileName}" yet.`))
-    const key = await askKey(ask, profileName)
-    if (key) {
-      p.apiKey = key
-      saveConfig(cfg)
+    console.log(theme.muted(`No API key set for "${profileName}".`))
+    const { [profileName]: _dropped, ...rest } = cfg.profiles
+    const made = await setupProfile(ask, { ...cfg, profiles: rest }, { allowDemo: true })
+    if (made) {
+      cfg = made
+      profileName = cfg.activeProfile
+    } else {
+      args.demo = true
+      cfg = { ...defaultConfig(), activeProfile: 'demo', profiles: { demo: DEMO_PROFILE } }
+      profileName = 'demo'
     }
   }
 
