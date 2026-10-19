@@ -5,6 +5,7 @@ import { runTurn, Cancelled } from './agent.js'
 import { DEFAULT_BASE_URLS, configPath, defaultConfig, loadConfig, maskKey, saveConfig } from './config.js'
 import { Permissions } from './permissions.js'
 import { buildSystemPrompt } from './prompt.js'
+import { demoProvider, DEMO_PROFILE } from './providers/demo.js'
 import { createProvider } from './providers/index.js'
 import { loadLastSession, newSession, saveSession } from './session.js'
 import type { Config, Msg, Profile, Provider, ProviderType } from './types.js'
@@ -86,13 +87,21 @@ async function main() {
   if (args.help) return console.log(HELP)
   if (args.version) return console.log(VERSION)
 
-  let cfg = loadConfig()
-  if (!cfg || !Object.keys(cfg.profiles).length) {
+  let cfg = args.demo ? null : loadConfig()
+  if (!args.demo && (!cfg || !Object.keys(cfg.profiles).length)) {
+    if (process.stdin.isTTY) {
+      console.log(theme.accent(theme.bold('Welcome to Croo.')) + ' No config yet.')
+      const choice = await ask('Set up a provider now, or look around in demo mode (no API key)? [setup/demo]: ')
+      if (choice.trim().toLowerCase().startsWith('d')) args.demo = true
+    }
+  }
+  if (args.demo) {
+    cfg = { ...defaultConfig(), activeProfile: 'demo', profiles: { demo: DEMO_PROFILE } }
+  } else if (!cfg || !Object.keys(cfg.profiles).length) {
     if (!process.stdin.isTTY) {
       console.error(`No config found. Run \`croo\` in a terminal to set one up, or create ${configPath()}.`)
       process.exit(1)
     }
-    console.log(theme.accent(theme.bold('Welcome to Croo.')) + ' No config yet, so let us set one up.')
     cfg = await setupProfile(ask, cfg ?? defaultConfig())
   }
   let profileName = args.profile ?? cfg.activeProfile
@@ -103,11 +112,12 @@ async function main() {
 
   const ui = new Ui({ theme, pet: frogPet, showPet: cfg.pet && !args.noPet, animations: cfg.animations, ask })
   const permissions = new Permissions(args.yolo)
+  const persist = !args.demo // demo mode never touches the config or session files
   const interactive = !args.prompt
 
   let provider: Provider
   const useProfile = (name: string) => {
-    provider = createProvider(cfg!.profiles[name])
+    provider = args.demo ? demoProvider() : createProvider(cfg!.profiles[name])
     profileName = name
   }
   try {
@@ -117,7 +127,7 @@ async function main() {
     process.exit(1)
   }
 
-  let session = (args.continue && loadLastSession(cwd)) || newSession(cwd, profileName)
+  let session = (args.continue && !args.demo && loadLastSession(cwd)) || newSession(cwd, profileName)
   const messages: Msg[] = session.messages
   if (args.continue && messages.length) ui.info(`Resumed session with ${messages.length} messages.`)
   const system = buildSystemPrompt(cwd)
@@ -164,7 +174,7 @@ async function main() {
       ui.idle()
       current = undefined
       session.profile = profileName
-      saveSession(session)
+      if (persist) saveSession(session)
     }
   }
 
@@ -203,6 +213,7 @@ async function main() {
   const profile = () => cfg!.profiles[profileName]
   const showBanner = () => ui.banner({ version: VERSION, profile: profileName, model: profile().model, cwd })
   await showBanner()
+  if (args.demo) ui.info('Demo mode: a scripted fake model, no API calls. Type anything to start.')
 
   const reader = getRl()
   reader.setPrompt(theme.accent('› '))
@@ -260,7 +271,7 @@ async function main() {
       try {
         useProfile(arg)
         cfg!.activeProfile = arg
-        saveConfig(cfg!)
+        if (persist) saveConfig(cfg!)
         ui.info(`  now using ${arg} (${profile().model})`)
       } catch (e: any) {
         ui.error(e.message)
@@ -281,7 +292,7 @@ async function main() {
     }
     next()
   }
-  saveSession(session)
+  if (persist) saveSession(session)
   process.exit(0)
 }
 

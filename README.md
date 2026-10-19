@@ -34,6 +34,7 @@ croo --continue           # resume the last session in this directory
 croo --profile local      # use a named profile
 croo --yolo               # skip permission prompts (be careful)
 croo --no-pet             # no frog
+croo --demo               # look around with a fake model, no API key
 ```
 
 Slash commands: `/help`, `/model` (list, `/model <name>` to switch, `/model add`), `/clear`, `/config`, `/exit`.

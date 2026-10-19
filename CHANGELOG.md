@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- `croo --demo`: explore the interface with a scripted fake model, no API key needed (also offered on first run)
+
 ## 0.1.0
 
 First release.

@@ -106,3 +106,24 @@ describe('provider message mapping', () => {
     expect(out[2].parts).toHaveLength(2)
   })
 })
+
+describe('demo provider', () => {
+  it('runs a full scripted turn: list_files, write_file, final text', async () => {
+    const { demoProvider } = await import('../src/providers/demo.js')
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'croo-demo-')))
+    const messages: Msg[] = [{ role: 'user', content: 'hi' }]
+    let text = ''
+    await runTurn({
+      provider: demoProvider(),
+      system: 's',
+      messages,
+      cwd,
+      permissions: new Permissions(true),
+      signal: new AbortController().signal,
+      hooks: { onThinking() {}, onText: (d) => (text += d), onTextEnd() {}, onToolRunning() {}, onToolDone() {}, confirm: async () => 'y', onUsage() {} },
+    })
+    expect(fs.existsSync(path.join(cwd, 'croo-demo.txt'))).toBe(true)
+    expect(text).toContain('All done')
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'])
+  })
+})
