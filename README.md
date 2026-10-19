@@ -19,7 +19,7 @@ Croo works with API keys and any OpenAI-compatible endpoint, including local mod
 ## Install
 
 ```bash
-npm i -g croo
+npm i -g croo-cli
 ```
 
 Requires Node 20+.
