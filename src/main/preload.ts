@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppState, Attachment, ChatEvent, Command, CrooApi, RunExit } from '../shared/ipc.js'
+import type { AppState, Attachment, ChatEvent, Command, CrooApi, RunExit, UpdateProgress } from '../shared/ipc.js'
 
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args)
 
@@ -36,6 +36,7 @@ const api: CrooApi = {
   setPrice: (profile, input, output) => invoke('profile:price', profile, input, output),
   installUpdate: () => invoke('update:install'),
   checkUpdate: () => invoke('update:check'),
+  onUpdateProgress: (cb) => void ipcRenderer.on('update:progress', (_e, p: UpdateProgress) => cb(p)),
   onOpenChat: (cb) => void ipcRenderer.on('open-chat', (_e, id: string) => cb(id)),
   stop: (chatId) => invoke('chat:stop', chatId),
   answer: (chatId, confirmId, answer) => invoke('chat:answer', chatId, confirmId, answer),

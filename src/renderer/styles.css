@@ -3139,6 +3139,8 @@ button.inst:hover {
 /* ---------- update banner ---------- */
 
 .update {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -3177,6 +3179,32 @@ button.inst:hover {
 .update-text small {
   color: var(--text-3);
   font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.update.busy .update-main:hover {
+  background: transparent;
+}
+/* Install progress: a hairline along the bottom edge of the banner (and the Settings row). */
+.update-fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 2px;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+.update-fill.indeterminate {
+  width: 30% !important;
+  animation: update-sweep 1.1s ease-in-out infinite;
+}
+@keyframes update-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
 }
 
 /* ---------- settings extras ---------- */
@@ -3223,6 +3251,8 @@ button.inst:hover {
   transform: translateX(16px);
 }
 .update-row {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: space-between;

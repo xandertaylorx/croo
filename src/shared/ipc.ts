@@ -142,6 +142,9 @@ export interface UpdateInfo {
   notes?: string
 }
 
+/** How far an in-app update has got: downloading (bytes so far, total if the server said) or installing. */
+export type UpdateProgress = { phase: 'download'; received: number; total?: number } | { phase: 'install' }
+
 export type { ChatHit } from '../chatsearch.js'
 
 export interface GitFile {
@@ -242,6 +245,7 @@ export interface CrooApi {
   /** Download the update, replace this app and relaunch. Resolves only on failure (on success the app quits). */
   installUpdate(): Promise<Result>
   checkUpdate(): Promise<{ ok: true; current: string; update?: UpdateInfo } | { ok: false; error: string }>
+  onUpdateProgress(cb: (p: UpdateProgress) => void): void
   onOpenChat(cb: (id: string) => void): void
   stop(chatId: string): Promise<void>
   answer(chatId: string, confirmId: string, answer: 'y' | 'n' | 'a'): Promise<void>

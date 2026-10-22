@@ -1,6 +1,6 @@
 import type { ChatInfo, WorkspaceInfo } from '../shared/ipc.js'
 import { h, icon } from './dom.js'
-import { bus, croo, installUpdate, remember, store } from './store.js'
+import { bus, croo, installUpdate, onUpdateProgress, remember, store, updateProgress } from './store.js'
 
 const collapsed = new Set<string>(JSON.parse(remember.get('collapsed') ?? '[]'))
 
@@ -56,19 +56,30 @@ function chatRow(c: ChatInfo): HTMLElement {
 function updateBanner(): HTMLElement | null {
   const u = store.state.update
   if (!u || remember.get('dismissedUpdate') === u.version) return null
-  return h(
-    'div',
-    { class: 'update', 'data-tip': u.notes ? u.notes.split('\n').filter(Boolean).slice(0, 3).join(' · ').slice(0, 160) : 'A newer version is available' },
-    h('button', { class: 'update-main no-drag', type: 'button', onClick: async (e: Event) => {
-      const btn = e.currentTarget as HTMLElement
-      const small = btn.querySelector('small')!
-      btn.setAttribute('disabled', '')
-      small.textContent = u.zip ? 'Updating, Croo will restart…' : 'Opening download…'
-      const err = await installUpdate()
-      if (err) (btn.removeAttribute('disabled'), (small.textContent = err))
-    } }, icon('download', 15), h('span', { class: 'update-text' }, h('b', null, `Croo ${u.version} is out`), h('small', null, u.zip ? 'Click to update' : 'Click to download'))),
-    h('button', { class: 'row-btn show no-drag', type: 'button', title: 'Not now', onClick: () => (remember.set('dismissedUpdate', u.version), renderSidebar()) }, icon('x', 13)),
-  )
+  const idle = u.zip ? 'Click to update' : 'Click to download'
+  const small = h('small', null, idle)
+  const fill = h('div', { class: 'update-fill' })
+  const main = h('button', { class: 'update-main no-drag', type: 'button', onClick: async () => {
+    if (!u.zip) small.textContent = 'Opening download…'
+    const err = await installUpdate()
+    if (err) small.textContent = err
+    else if (!u.zip) small.textContent = idle
+  } }, icon('download', 15), h('span', { class: 'update-text' }, h('b', null, `Croo ${u.version} is out`), small))
+  const dismiss = h('button', { class: 'row-btn show no-drag', type: 'button', title: 'Not now', onClick: () => (remember.set('dismissedUpdate', u.version), renderSidebar()) }, icon('x', 13))
+  const banner = h('div', { class: 'update', 'data-tip': u.notes ? u.notes.split('\n').filter(Boolean).slice(0, 3).join(' · ').slice(0, 160) : 'A newer version is available' }, main, dismiss, fill)
+  // The sidebar is rebuilt often, so the banner paints from the shared progress rather than keeping its own.
+  const paint = () => {
+    const p = updateProgress
+    banner.classList.toggle('busy', !!p)
+    main.toggleAttribute('disabled', !!p)
+    dismiss.style.display = p ? 'none' : ''
+    if (p) small.textContent = p.text
+    fill.style.width = p?.fraction !== undefined ? `${p.fraction * 100}%` : '0'
+    fill.classList.toggle('indeterminate', !!p && p.fraction === undefined)
+  }
+  paint()
+  const stop = onUpdateProgress(() => (banner.isConnected ? paint() : stop()))
+  return banner
 }
 
 function segmented(): HTMLElement {

@@ -521,7 +521,7 @@ function registerIpc() {
       void shell.openExternal(update?.url ?? update?.page ?? `https://github.com/${GITHUB_REPO}/releases`)
       return { ok: true as const }
     }
-    const r = await stageUpdate(update.zip, bundle)
+    const r = await stageUpdate(update.zip, bundle, (p) => send('update:progress', p))
     if (r.ok) setTimeout(() => app.quit(), 300)
     return r
   })

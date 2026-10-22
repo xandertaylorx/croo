@@ -1,4 +1,4 @@
-import type { UpdateInfo } from '../shared/ipc.js'
+import type { UpdateInfo, UpdateProgress } from '../shared/ipc.js'
 import { spawn, execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -33,18 +33,37 @@ export function runningBundle(execPath = process.execPath): string | undefined {
   return m?.[1]
 }
 
+/** Stream a file to disk, reporting progress a few times a second and once more at the end. */
+export async function download(url: string, dest: string, onProgress: (p: UpdateProgress) => void): Promise<void> {
+  const res = await fetch(url, { headers: { 'user-agent': 'croo-app' }, redirect: 'follow' })
+  if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`)
+  const total = Number(res.headers.get('content-length')) || undefined
+  const file = fs.openSync(dest, 'w')
+  let received = 0
+  let shown = 0
+  try {
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      fs.writeSync(file, chunk)
+      received += chunk.length
+      if (Date.now() - shown > 120) (shown = Date.now()), onProgress({ phase: 'download', received, total })
+    }
+  } finally {
+    fs.closeSync(file)
+  }
+  onProgress({ phase: 'download', received, total: total ?? received })
+}
+
 /**
  * Download the release zip, unpack it, and start a detached script that waits for this process to exit,
  * swaps the bundle in place and relaunches it. The caller quits the app when this resolves ok.
  */
-export async function stageUpdate(zipUrl: string, bundle: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function stageUpdate(zipUrl: string, bundle: string, onProgress: (p: UpdateProgress) => void = () => {}): Promise<{ ok: true } | { ok: false; error: string }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-update-'))
   try {
     fs.accessSync(path.dirname(bundle), fs.constants.W_OK)
-    const res = await fetch(zipUrl, { headers: { 'user-agent': 'croo-app' }, redirect: 'follow' })
-    if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`)
     const zip = path.join(dir, 'update.zip')
-    fs.writeFileSync(zip, Buffer.from(await res.arrayBuffer()))
+    await download(zipUrl, zip, onProgress)
+    onProgress({ phase: 'install' })
     const out = path.join(dir, 'out')
     fs.mkdirSync(out)
     await promisify(execFile)('/usr/bin/ditto', ['-x', '-k', zip, out])

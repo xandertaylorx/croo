@@ -5,7 +5,7 @@ import type { AppState } from '../shared/ipc.js'
 import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
 import type { IconName } from './dom.js'
-import { croo, installUpdate, store } from './store.js'
+import { croo, installUpdate, onUpdateProgress, store, updateProgress } from './store.js'
 
 type Choice = Preset | 'custom'
 
@@ -395,9 +395,10 @@ export function openSettings() {
     btn.addEventListener('click', async () => {
       if (u) {
         btn.disabled = true
-        status.textContent = u.zip ? 'Updating, Croo will restart…' : 'Opening download…'
+        if (!u.zip) status.textContent = 'Opening download…'
         const err = await installUpdate()
-        if (err) (btn.disabled = false, (status.textContent = err))
+        btn.disabled = false
+        status.textContent = err ?? `Version ${u.version} is available.`
         return
       }
       btn.disabled = true
@@ -407,7 +408,19 @@ export function openSettings() {
       status.textContent = !r.ok ? r.error : r.update ? `Version ${r.update.version} is available.` : 'You are on the latest version.'
       if (r.ok && r.update) paint()
     })
-    return h('div', { class: 'update-row' }, status, btn)
+    const fill = h('div', { class: 'update-fill' })
+    const row = h('div', { class: 'update-row' }, status, btn, fill)
+    const show = () => {
+      const p = updateProgress
+      if (!u || !p) return
+      btn.disabled = true
+      status.textContent = p.text
+      fill.style.width = p.fraction !== undefined ? `${p.fraction * 100}%` : '0'
+      fill.classList.toggle('indeterminate', p.fraction === undefined)
+    }
+    show()
+    const stop = onUpdateProgress(() => (row.isConnected ? show() : stop()))
+    return row
   }
 
   const aboutPane = () => {

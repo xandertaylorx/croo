@@ -1,4 +1,4 @@
-import type { AppState, Attachment, ChatKind, Command, CrooApi, Item } from '../shared/ipc.js'
+import type { AppState, Attachment, ChatKind, Command, CrooApi, Item, UpdateProgress } from '../shared/ipc.js'
 
 declare global {
   interface Window {
@@ -73,8 +73,33 @@ export const remember = {
   },
 }
 
+/** Where an in-app update is, for the sidebar banner and Settings → About. Null when none is running. */
+export let updateProgress: { text: string; fraction?: number } | null = null
+const updateListeners = new Set<() => void>()
+/** Called on every progress step; returns a function that stops listening. */
+export function onUpdateProgress(cb: () => void): () => void {
+  updateListeners.add(cb)
+  return () => updateListeners.delete(cb)
+}
+const mb = (n: number) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0)
+function setUpdateProgress(p: typeof updateProgress) {
+  updateProgress = p
+  for (const cb of updateListeners) cb()
+}
+croo.onUpdateProgress((p: UpdateProgress) => {
+  if (p.phase === 'install') return setUpdateProgress({ text: 'Installing, Croo will restart…', fraction: 1 })
+  const fraction = p.total ? Math.min(1, p.received / p.total) : undefined
+  setUpdateProgress({
+    text: fraction === undefined ? `Downloading… ${mb(p.received)} MB` : `Downloading… ${Math.floor(fraction * 100)}% · ${mb(p.received)} of ${mb(p.total!)} MB`,
+    fraction,
+  })
+})
+
 /** Download the update, swap it in and relaunch. Returns an error message if it could not. */
 export async function installUpdate(): Promise<string | undefined> {
+  setUpdateProgress({ text: 'Starting download…', fraction: 0 })
   const r = await croo.installUpdate()
+  // On success the app is about to quit; anything else (an error, or the download page opened instead) ends here.
+  if (!r.ok || updateProgress?.fraction !== 1) setUpdateProgress(null)
   return r.ok ? undefined : r.error
 }
