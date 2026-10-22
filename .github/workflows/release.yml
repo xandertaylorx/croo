@@ -26,7 +26,11 @@ jobs:
       # This build is unsigned. For a signed, notarized build, run the release from a Mac that has the
       # Developer ID certificate (see README, "Releases and updates"), or add CSC_LINK and CSC_KEY_PASSWORD
       # secrets here. Passing them while empty breaks electron-builder, so they are left out on purpose.
-      - run: npx electron-builder --mac --publish always
+      # electron-builder's own GitHub publisher races itself and can create two releases, so build
+      # first and create the release once with gh.
+      - run: npx electron-builder --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.zip release/*.blockmap --title "Croo ${GITHUB_REF_NAME#v}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
