@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+- **Memory**: in Chat mode Croo saves durable things you tell it (preferences, projects, people) and uses them in later chats; a small "Remembered …" line appears in the chat when it does. Notes live in `memory.md` in Croo's data folder as dated markdown. Code mode reads the notes too
+- Manage it in Settings → General → Memory: turn it off, forget single notes, or forget everything
+- Croo now knows your name from Settings → Profile
+
 ## 0.9.1
 
 - **In-app updates**: "Update and restart" (bottom left or Settings → About) downloads the new version, replaces Croo and relaunches it, no manual download. Falls back to the download page if Croo can't write to its own folder

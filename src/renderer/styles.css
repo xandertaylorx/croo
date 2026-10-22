@@ -3532,3 +3532,26 @@ button.inst:hover {
   display: flex;
   gap: 8px;
 }
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 4px;
+  align-items: flex-start;
+}
+.memory-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 4px 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-2, rgba(127, 127, 127, 0.08));
+}
+.memory-text {
+  flex: 1;
+}
+.memory-item small {
+  color: var(--text-3, var(--text-2));
+  white-space: nowrap;
+}

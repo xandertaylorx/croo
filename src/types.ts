@@ -85,6 +85,8 @@ export interface Config {
   notify: boolean
   effort: import('./effort.js').Effort
   /** Shown bottom left; both optional. `avatar` is a small image data URL. */
+  /** Croo remembers things about you across chats (Chat mode). */
+  memory?: boolean
   userName?: string
   avatar?: string
 }

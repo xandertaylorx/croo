@@ -8,7 +8,9 @@ import { Cancelled, runTurn } from '../agent.js'
 import { EFFORTS, effortLevels, type Effort } from '../effort.js'
 import { isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig, defaultConfig } from '../config.js'
 import { Permissions } from '../permissions.js'
-import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles } from '../prompt.js'
+import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, type UserContext } from '../prompt.js'
+import { clearMemory, loadMemory, removeMemory } from '../memory.js'
+import { rememberTool } from '../tools/index.js'
 import { demoProvider } from '../providers/demo.js'
 import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
@@ -131,6 +133,8 @@ function buildState(): AppState {
     permissionMode: cfg.permissionMode,
     effort: cfg.effort,
     notify: cfg.notify,
+    memory: cfg.memory !== false,
+    memoryEntries: loadMemory(),
     userName: cfg.userName ?? '',
     avatar: cfg.avatar ?? '',
     update,
@@ -244,6 +248,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
   const active = activeProfile()
   session.profile = active?.[0] ?? 'demo'
 
+  const userCtx: UserContext = { name: cfg.userName || undefined, memory: cfg.memory !== false ? loadMemory() : undefined, canRemember: plain && cfg.memory !== false && !demo }
   const identity = demo || !active ? undefined : { model: active[1].model, provider: active[0] }
 
   const run = async () => {
@@ -251,20 +256,20 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
       const provider = demo ? demoProvider() : createProvider(active![1])
       await runTurn({
         provider,
-        system: plain ? buildChatPrompt(new Date(), identity) : buildSystemPrompt(session.cwd, new Date(), identity),
+        system: plain ? buildChatPrompt(new Date(), identity, userCtx) : buildSystemPrompt(session.cwd, new Date(), identity, userCtx),
         messages,
         cwd: session.cwd,
         permissions: rt.permissions,
         signal: ac.signal,
         effort: cfg.effort,
-        tools: plain ? [] : undefined,
+        tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : undefined,
         hooks: {
           onThinking: () => emit({ chatId, type: 'thinking' }),
           onReasoning: (delta) => emit({ chatId, type: 'reasoning', delta }),
           onText: (delta) => emit({ chatId, type: 'text', delta }),
           onTextEnd: () => emit({ chatId, type: 'textEnd' }),
           onToolRunning: (name, summary) => emit({ chatId, type: 'toolRunning', name, summary }),
-          onToolDone: (name, summary, ok, result) => emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result) }),
+          onToolDone: (name, summary, ok, result) => (name === 'remember' && pushState(), emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result) })),
           confirm: (name, preview) =>
             new Promise((resolve) => {
               const id = Math.random().toString(36).slice(2)
@@ -445,6 +450,19 @@ function registerIpc() {
     const pic = typeof avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(avatar) && avatar.length < 400_000 ? avatar : ''
     cfg = { ...cfg, userName: name, avatar: pic }
     persist()
+    pushState()
+  })
+  ipcMain.handle('memory:set', (_e, on: boolean) => {
+    cfg = { ...cfg, memory: !!on }
+    persist()
+    pushState()
+  })
+  ipcMain.handle('memory:remove', (_e, index: number) => {
+    removeMemory(Number(index))
+    pushState()
+  })
+  ipcMain.handle('memory:clear', () => {
+    clearMemory()
     pushState()
   })
   ipcMain.handle('notify:set', (_e, on: boolean) => {

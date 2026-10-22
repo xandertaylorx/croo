@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { memoryBlock, type MemoryEntry } from './memory.js'
 
 /** Instruction files Croo reads from the folder, in the order they are shown to the model. */
 export const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md', 'CROO.md']
@@ -64,10 +65,30 @@ export const FORMAT_GUIDE = [
   '- No filler openers like "Great question", do not repeat the question back, and skip a closing recap unless asked.',
 ].join('\n')
 
-export function buildChatPrompt(now = new Date(), who?: Identity): string {
+/** What Croo knows about the user: their name, and (when memory is on) the notes it saved. */
+export interface UserContext {
+  name?: string
+  memory?: MemoryEntry[]
+  /** Chat mode only: the model can save new notes with the `remember` tool. */
+  canRemember?: boolean
+}
+
+const userLines = (u?: UserContext) =>
+  [
+    u?.name ? `The user's name is ${u.name}. Use it sparingly and naturally.` : '',
+    u?.memory ? memoryBlock(u.memory) : '',
+    u?.canRemember
+      ? 'Memory: when the user tells you something durable and useful about themselves (name, preferences, projects, people, goals, how they like answers), save it with the remember tool, one short sentence per call. Do not save passwords, keys, one-off tasks or anything sensitive. Do not announce it; the app shows a small note. Never save something already listed above.'
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+export function buildChatPrompt(now = new Date(), who?: Identity, user?: UserContext): string {
   return [
     `You are Croo, a small, friendly assistant living in a desktop app. Date: ${now.toISOString().slice(0, 10)}.`,
     identityLine(who),
+    userLines(user),
     'This is a plain conversation: you have no access to files or the shell here. Answer clearly and concisely.',
     FORMAT_GUIDE,
   ]
@@ -75,10 +96,11 @@ export function buildChatPrompt(now = new Date(), who?: Identity): string {
     .join('\n\n')
 }
 
-export function buildSystemPrompt(cwd: string, now = new Date(), who?: Identity): string {
+export function buildSystemPrompt(cwd: string, now = new Date(), who?: Identity, user?: UserContext): string {
   const parts = [
     `You are Croo, a small, friendly, open-source coding agent running in a desktop app. You are working in the folder: ${cwd}`,
     identityLine(who),
+    userLines(user),
     `Platform: ${process.platform}. Date: ${now.toISOString().slice(0, 10)}.`,
     [
       'Guidelines:',

@@ -26,7 +26,7 @@ export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function defaultConfig(): Config {
-  return { activeProfile: '', profiles: {}, pet: true, animations: true, permissionMode: 'auto', notify: true, effort: 'auto' }
+  return { activeProfile: '', profiles: {}, pet: true, animations: true, permissionMode: 'auto', notify: true, effort: 'auto', memory: true }
 }
 
 /** Returns null when no config file exists. Throws a readable error if it is malformed. */
@@ -48,6 +48,7 @@ export function loadConfig(file = configPath()): Config | null {
   if (!cfg.profiles || typeof cfg.profiles !== 'object') cfg.profiles = {}
   if (!['manual', 'auto', 'bypass'].includes(cfg.permissionMode)) cfg.permissionMode = 'auto'
   if (typeof cfg.notify !== 'boolean') cfg.notify = true
+  if (typeof cfg.memory !== 'boolean') cfg.memory = true
   if (!['auto', 'low', 'medium', 'high', 'xhigh', 'max'].includes(cfg.effort)) cfg.effort = 'auto'
   for (const [name, p] of Object.entries(cfg.profiles)) {
     if (!p || !['openai', 'anthropic', 'gemini'].includes(p.type) || !p.model) {

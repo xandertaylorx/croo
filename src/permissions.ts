@@ -54,7 +54,7 @@ export class Permissions {
    * bypass: nothing asks.
    */
   needsApproval(tool: string, args?: { command?: unknown }): boolean {
-    if (this.mode === 'bypass') return false
+    if (tool === 'remember' || this.mode === 'bypass') return false
     if (this.mode === 'manual') return true
     if (READ_ONLY_TOOLS.has(tool) || this.always.has(tool)) return false
     if (tool === 'bash') return classifyCommand(String(args?.command ?? '')) !== 'safe'

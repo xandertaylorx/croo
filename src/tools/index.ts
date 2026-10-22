@@ -3,6 +3,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import type { ToolSpec } from '../types.js'
 import { applyEdit } from './edit.js'
+import { addMemory } from '../memory.js'
 import { Ignore, globMatcher, walk } from './ignore.js'
 
 export type Preview =
@@ -252,6 +253,19 @@ const bash: Tool = {
   },
 }
 
+/** Chat mode only: save one fact about the user to memory.md. */
+export const rememberTool: Tool = {
+  spec: {
+    name: 'remember',
+    description: 'Save one short, durable fact about the user to long-term memory so you know it in future chats.',
+    parameters: { type: 'object', properties: { note: str('string', 'One short sentence, e.g. "Prefers concise answers" or "Works on a Rust game engine"') }, required: ['note'] },
+  },
+  summarize: (a) => String(a.note ?? '').slice(0, 120),
+  async run(a) {
+    return addMemory(String(a.note ?? '')) ? 'Saved.' : 'Not saved (empty or already remembered).'
+  },
+}
+
 export const TOOLS: Tool[] = [readFile, writeFile, editFile, listFiles, grep, bash]
-export const toolByName = (name: string) => TOOLS.find((t) => t.spec.name === name)
+export const toolByName = (name: string) => [...TOOLS, rememberTool].find((t) => t.spec.name === name)
 export { Ignore }

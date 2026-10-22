@@ -19,6 +19,7 @@ const VERBS: Record<string, [string, string, IconName]> = {
   list_files: ['Listing', 'Listed', 'list'],
   grep: ['Searching', 'Searched', 'search'],
   bash: ['Running', 'Ran', 'terminal'],
+  remember: ['Remembering', 'Remembered', 'sparkle'],
 }
 const TITLES: Record<string, string> = {
   bash: 'Run this command?',

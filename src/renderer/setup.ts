@@ -274,6 +274,27 @@ export function openSettings() {
     )
   }
 
+  const memorySection = () => {
+    const st = store.state
+    const sw = h('input', { class: 'switch', type: 'checkbox', role: 'switch', onChange: (e: Event) => void croo.setMemory((e.target as HTMLInputElement).checked) })
+    sw.checked = st.memory
+    return h(
+      'div',
+      null,
+      h('label', { class: 'switch-row' }, h('span', null, 'Let Croo remember things about me', h('small', null, 'In Chat mode it saves what seems important and uses it in later chats. Stored in memory.md on this Mac.')), sw),
+      st.memoryEntries.length
+        ? h(
+            'div',
+            { class: 'memory-list' },
+            st.memoryEntries.map((e, i) =>
+              h('div', { class: 'memory-item' }, h('span', { class: 'memory-text' }, e.text), h('small', null, e.date), h('button', { class: 'row-btn show', type: 'button', title: 'Forget this', onClick: () => void croo.removeMemory(i) }, icon('x', 13))),
+            ),
+            h('button', { class: 'btn small', type: 'button', onClick: () => void croo.clearMemory() }, 'Forget everything'),
+          )
+        : h('p', { class: 'muted' }, st.memory ? 'Nothing remembered yet.' : 'Memory is off. Croo won’t save or use notes.'),
+    )
+  }
+
   const generalPane = () => {
     const s = store.state
     const active = s.profiles.find((p) => p.active)
@@ -298,6 +319,8 @@ export function openSettings() {
         EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
       ),
       h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
+      h('div', { class: 'section-label' }, 'Memory'),
+      memorySection(),
       h('div', { class: 'section-label' }, 'Notifications'),
       h(
         'label',

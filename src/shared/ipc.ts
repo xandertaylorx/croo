@@ -169,6 +169,8 @@ export interface AppState {
   permissionMode: PermissionMode
   effort: Effort
   notify: boolean
+  memory: boolean
+  memoryEntries: { date: string; text: string }[]
   userName: string
   /** Small image data URL, or empty. */
   avatar: string
@@ -220,6 +222,9 @@ export interface CrooApi {
   startDemo(): Promise<void>
   setMode(mode: PermissionMode): Promise<void>
   setEffort(effort: Effort): Promise<void>
+  setMemory(on: boolean): Promise<void>
+  removeMemory(index: number): Promise<void>
+  clearMemory(): Promise<void>
   setUser(userName: string, avatar: string): Promise<void>
   listModels(profile?: string): Promise<{ models: ModelInfo[]; error?: string }>
   setModel(profile: string, model: string): Promise<void>
