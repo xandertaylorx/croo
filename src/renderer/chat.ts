@@ -491,7 +491,19 @@ function touchText(item: Item) {
         const md = el.querySelector('.md')
         if (md) (md.innerHTML = renderMarkdown(it.text), m && restoreRuns(md, m.view.id))
       }
-      else if (el && it.kind === 'thinking') touch(it)
+      else if (el && it.kind === 'thinking') {
+        // Update in place: rebuilding the row on every frame makes it impossible to hover or click.
+        const preview = el.querySelector('.think-preview')
+        const body = el.querySelector('.think-body')
+        const lastLine = it.text.trim().split('\n').filter(Boolean).pop() ?? ''
+        if (body) {
+          const stick = body.scrollHeight - body.scrollTop - body.clientHeight < 40
+          body.textContent = it.text.trim()
+          if (stick) body.scrollTop = body.scrollHeight
+        }
+        if (preview) preview.textContent = lastLine
+        else if (!body && lastLine) touch(it)
+      }
     }
     dirty.clear()
     follow()

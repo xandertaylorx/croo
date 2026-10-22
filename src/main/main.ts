@@ -12,6 +12,7 @@ import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, type
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
 import { rememberTool } from '../tools/index.js'
 import { demoProvider } from '../providers/demo.js'
+import { fixPath } from './shellenv.js'
 import { LOCAL_MODELS, localModel } from '../localmodels.js'
 import { cancelDownload, deleteModel, downloadState, engineInstalled, ensureEngine, initLocal, isReady, startDownload, stopEngine, touchEngine } from './local.js'
 import { createProvider } from '../providers/index.js'
@@ -817,6 +818,7 @@ else {
   })
   app.setName('Croo')
   void app.whenReady().then(() => {
+    fixPath()
     loadAll()
     initLocal(app.isPackaged ? path.join(process.resourcesPath, 'llama') : path.join(here, '..', '..', 'vendor', 'llama'), pushState)
     registerIpc()

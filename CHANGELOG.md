@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1
+
+- Fixed the "Thinking…" row glitching when you hover or click it while the model is reasoning
+- Fixed the Git panel not offering to create a GitHub repository: apps opened from Finder didn't see `gh` (or node, brew tools) on the PATH; Croo now picks up your shell's PATH and the Homebrew folders
+
 ## 0.11.0
 
 - **Local model, built in**: Croo now bundles its own engine (llama.cpp). In Settings → Providers (or on first run) download Qwen3 4B Instruct, about 2.5 GB, and it runs on your Mac with Metal: free, private, offline, no account or key. The model lives in Croo's data folder, not in the app, so updating Croo never removes it; downloads resume and are checksum-verified. The engine starts when you chat and stops after ten idle minutes
