@@ -20,6 +20,11 @@ export interface ChatView {
   /** Quiet line after a turn, like "Done in 3.2s". */
   note?: string
   draft: string
+  /** When the current turn began, and what it has used so far. */
+  t0?: number
+  tokens?: { input: number; output: number }
+  /** Characters streamed since the last usage report, to estimate output while it is still arriving. */
+  streamed?: number
 }
 
 export const store = {

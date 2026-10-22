@@ -23,6 +23,7 @@ export type Item =
 
 export type ChatEvent = { chatId: string } & (
   | { type: 'thinking' }
+  | { type: 'usage'; input: number; output: number }
   | { type: 'reasoning'; delta: string }
   | { type: 'text'; delta: string }
   | { type: 'textEnd' }
@@ -126,6 +127,7 @@ export type RunKind = 'shell' | 'python' | 'node'
 
 export interface AppState {
   platform: string
+  version: string
   home: string
   /** Keys are encrypted with the OS keychain. */
   secureKeys: boolean

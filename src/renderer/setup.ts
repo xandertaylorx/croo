@@ -2,7 +2,9 @@ import { PRESETS, type Preset } from '../providers/presets.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
 import type { AppState } from '../shared/ipc.js'
+import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
+import type { IconName } from './dom.js'
 import { croo, store } from './store.js'
 
 type Choice = Preset | 'custom'
@@ -134,19 +136,39 @@ function keyForm(name: string, close: () => void): HTMLElement {
   )
 }
 
+type Pane = 'providers' | 'general' | 'about'
+let pane: Pane = 'providers'
+
+const MODE_OPTIONS: { id: 'manual' | 'auto' | 'bypass'; label: string; icon: IconName; desc: string }[] = [
+  { id: 'manual', label: 'Manual', icon: 'shield', desc: 'Asks before every action, even reading a file.' },
+  { id: 'auto', label: 'Auto', icon: 'shieldCheck', desc: 'Reads, edits in the folder and safe commands run. Anything else asks.' },
+  { id: 'bypass', label: 'Bypass', icon: 'bolt', desc: 'Never asks. Commands run immediately.' },
+]
+const EFFORT_OPTIONS: { id: Effort; label: string }[] = [
+  { id: 'auto', label: 'Auto' }, { id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' }, { id: 'xhigh', label: 'Extra high' }, { id: 'max', label: 'Max' },
+]
+const SHORTCUTS: [string, string][] = [
+  ['⌘1 / ⌘2', 'Chat / Code mode'], ['⌘N', 'New chat'], ['⌘O', 'Add folder'], ['⌘B', 'Toggle sidebar'], ['⌘J', 'Terminal'], ['⌘T', 'New terminal tab (in terminal)'],
+  ['⌘⇧E', 'Files'], ['⌘⇧G', 'Git'], ['⌘⇧B', 'Browser'], ['⇧Tab', 'Cycle permission mode'], ['⌘↵', 'Allow an approval'], ['⌘,', 'Settings'],
+]
+
 export function openSettings() {
   if (modal) return closeSettings()
-  const body = h('div', { class: 'modal-body' })
-  const card = h('div', { class: 'modal-card', role: 'dialog', 'aria-label': 'Settings' }, body)
+  const content = h('div', { class: 'settings-pane' })
+  const nav = h('nav', { class: 'settings-nav', 'aria-label': 'Settings sections' })
+  const card = h('div', { class: 'modal-card wide', role: 'dialog', 'aria-label': 'Settings' }, h('div', { class: 'settings' }, nav, content))
   modal = h('div', { class: 'modal', onClick: (e: Event) => e.target === modal && closeSettings() }, card)
   document.getElementById('modal-root')!.append(modal)
   document.addEventListener('keydown', onKey, true)
 
+  const head = (title: string, sub?: string) =>
+    h('div', { class: 'pane-head' }, h('div', null, h('h2', null, title), sub ? h('p', { class: 'muted' }, sub) : null), h('button', { class: 'icon-btn', type: 'button', title: 'Close', onClick: closeSettings }, icon('x', 16)))
+
   const profileCard = (p: AppState['profiles'][number], demo: boolean) => {
-    const panel = panels.get(p.name)
+    const open = panels.get(p.name)
     const toggle = (kind: 'key' | 'models') => {
       panels.get(p.name) === kind ? panels.delete(p.name) : panels.set(p.name, kind)
-      list()
+      paint()
     }
     const active = p.active && !demo
     return h(
@@ -155,57 +177,95 @@ export function openSettings() {
       h(
         'div',
         { class: 'pcard-top' },
-        h('span', { class: 'pcard-name' }, p.name),
-        active ? h('span', { class: 'pill' }, 'Active') : h('button', { class: 'btn small', type: 'button', onClick: () => void croo.useProfile(p.name) }, 'Use'),
+        h('div', { class: 'pcard-id' }, h('span', { class: 'pcard-name' }, p.name), h('span', { class: 'pcard-host' }, p.provider)),
         h('span', { class: 'push-right' }),
+        active ? h('span', { class: 'pill' }, 'Active') : h('button', { class: 'btn small', type: 'button', onClick: () => void croo.useProfile(p.name) }, 'Use'),
         h('button', { class: 'icon-btn small danger', type: 'button', title: 'Remove provider', onClick: () => (panels.delete(p.name), void croo.removeProfile(p.name)) }, icon('trash', 14)),
       ),
-      h('div', { class: 'pcard-meta' }, h('span', { class: 'mono' }, p.model), h('span', null, p.provider)),
+      h('div', { class: 'pcard-row' }, h('span', { class: 'pcard-label' }, 'Model'), h('span', { class: 'mono pcard-val' }, p.model), h('button', { class: `btn small ${open === 'models' ? 'on' : ''}`, type: 'button', disabled: !p.hasKey, onClick: () => toggle('models') }, 'Change')),
       h(
         'div',
-        { class: 'pcard-key' },
-        icon('key', 14),
+        { class: 'pcard-row' },
+        h('span', { class: 'pcard-label' }, 'API key'),
         p.hasKey
-          ? h('span', null, p.local && !p.keyHint ? 'Local server, no key needed' : p.keyHint, p.keySource === 'saved' ? h('em', null, store.state.secureKeys ? ' · encrypted in your keychain' : ' · saved on this Mac') : p.keySource === 'env' ? h('em', null, ' · set with an environment variable') : null)
-          : h('span', { class: 'warn' }, 'No key yet'),
-        h('span', { class: 'push-right' }),
-        h('button', { class: `btn small ${panel === 'key' ? 'on' : ''} ${p.hasKey ? '' : 'primary'}`, type: 'button', onClick: () => toggle('key') }, p.hasKey ? 'Update key' : 'Add key'),
-        h('button', { class: `btn small ${panel === 'models' ? 'on' : ''}`, type: 'button', disabled: !p.hasKey, onClick: () => toggle('models') }, 'Models'),
+          ? h('span', { class: 'pcard-val' }, p.local && !p.keyHint ? 'Not needed for a local server' : p.keyHint, p.keySource === 'saved' ? h('em', null, store.state.secureKeys ? ' · encrypted in your keychain' : ' · saved on this Mac') : p.keySource === 'env' ? h('em', null, ' · from an environment variable') : null)
+          : h('span', { class: 'pcard-val warn' }, 'No key yet'),
+        h('button', { class: `btn small ${open === 'key' ? 'on' : ''} ${p.hasKey ? '' : 'primary'}`, type: 'button', onClick: () => toggle('key') }, p.hasKey ? 'Update' : 'Add key'),
       ),
-      panel === 'key' ? keyForm(p.name, () => (panels.delete(p.name), list())) : null,
-      panel === 'models' ? h('div', { class: 'pcard-models' }, modelList({ profile: p.name, current: p.model, autofocus: true, onPick: (id) => void croo.setModel(p.name, id) })) : null,
+      open === 'key' ? keyForm(p.name, () => (panels.delete(p.name), paint())) : null,
+      open === 'models' ? h('div', { class: 'pcard-models' }, modelList({ profile: p.name, current: p.model, autofocus: true, onPick: (id) => void croo.setModel(p.name, id) })) : null,
     )
   }
 
-  const list = () => {
-    redraw = list
-    const { profiles, demo, secureKeys } = store.state
-    body.replaceChildren(
-      h('div', { class: 'modal-head' }, h('h2', null, 'Settings'), h('button', { class: 'icon-btn', type: 'button', title: 'Close', onClick: closeSettings }, icon('x', 16))),
-      h('div', { class: 'section-label' }, 'Providers'),
+  const providersPane = () => {
+    const { profiles, demo } = store.state
+    return [
+      head('Providers', 'Where Croo sends your messages. Bring your own key, or point it at a local model.'),
       profiles.length || demo
         ? h(
             'div',
             { class: 'profiles' },
-            demo ? h('div', { class: 'pcard active' }, h('div', { class: 'pcard-top' }, h('span', { class: 'pcard-name' }, 'Demo'), h('span', { class: 'pill' }, 'Active')), h('div', { class: 'pcard-meta' }, h('span', null, 'A scripted fake model. Nothing is saved.'))) : null,
+            demo ? h('div', { class: 'pcard active' }, h('div', { class: 'pcard-top' }, h('div', { class: 'pcard-id' }, h('span', { class: 'pcard-name' }, 'Demo'), h('span', { class: 'pcard-host' }, 'scripted, nothing is saved')), h('span', { class: 'push-right' }), h('span', { class: 'pill' }, 'Active'))) : null,
             profiles.map((p) => profileCard(p, demo)),
           )
         : h('p', { class: 'muted' }, 'No providers yet.'),
-      h('button', { class: 'btn', type: 'button', onClick: add }, icon('plus', 14), 'Add provider'),
+      h('button', { class: 'btn', type: 'button', onClick: addProvider }, icon('plus', 14), 'Add provider'),
+    ]
+  }
+
+  const generalPane = () => {
+    const s = store.state
+    const active = s.profiles.find((p) => p.active)
+    return [
+      head('General', 'Defaults for every chat.'),
+      h('div', { class: 'section-label' }, 'Permissions'),
+      h(
+        'div',
+        { class: 'opts' },
+        MODE_OPTIONS.map((o) =>
+          h('button', { class: `opt mode-${o.id} ${s.permissionMode === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.permissionMode === o.id, onClick: () => void croo.setMode(o.id) }, icon(o.icon, 18), h('b', null, o.label), h('small', null, o.desc)),
+        ),
+      ),
+      h('div', { class: 'section-label' }, 'Reasoning effort'),
+      h(
+        'div',
+        { class: 'chips' },
+        EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
+      ),
+      h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
+      h('div', { class: 'section-label' }, 'Appearance'),
+      h('p', { class: 'muted' }, 'Croo follows your system’s light or dark setting.'),
+    ]
+  }
+
+  const aboutPane = () => {
+    const s = store.state
+    return [
+      head('About', `Croo ${s.version}`),
+      h('div', { class: 'section-label' }, 'Privacy'),
+      h('p', { class: 'muted' }, s.secureKeys ? 'API keys are encrypted with your Mac’s keychain before they are written to disk. ' : 'API keys are saved in ~/.config/croo, readable only by you. ', 'Chats and folders stay in ~/.local/share/croo. The only network calls are to the model provider you choose.'),
       h('div', { class: 'section-label' }, 'Project instructions'),
       h('p', { class: 'muted' }, 'Croo reads AGENTS.md, CLAUDE.md and CROO.md in each folder at the start of every turn. Type ', h('kbd', null, '/init'), ' in a chat and it will study the project and write AGENTS.md for you.'),
-      h('div', { class: 'section-label' }, 'Privacy'),
-      h('p', { class: 'muted' }, secureKeys ? 'Your API keys are encrypted with your Mac’s keychain before they are written to disk. ' : 'Your API keys are saved in ~/.config/croo (readable only by you). ', 'Chats and folders stay in ~/.local/share/croo. The only network calls are to the model provider you choose.'),
-    )
+      h('div', { class: 'section-label' }, 'Keyboard shortcuts'),
+      h('div', { class: 'shortcuts' }, SHORTCUTS.map(([k, d]) => h('div', { class: 'sc' }, h('span', null, d), h('span', { class: 'sc-keys' }, (k.match(/⌘|⇧|⌥|⌃|↵|\/|[A-Za-z0-9,]+/g) ?? []).map((t) => (t === '/' ? h('i', null, '/') : h('kbd', null, t))))))),
+    ]
   }
-  const add = () => {
+
+  const paint = () => {
+    redraw = paint
+    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['about', 'About', 'file']]
+    nav.replaceChildren(
+      h('div', { class: 'settings-title' }, 'Settings'),
+      ...tabs.map(([id, label, ic]) => h('button', { class: `nav-btn ${pane === id ? 'on' : ''}`, type: 'button', 'aria-current': pane === id ? 'page' : undefined, onClick: () => ((pane = id), paint()) }, icon(ic, 16), label)),
+    )
+    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : aboutPane()))
+  }
+
+  const addProvider = () => {
     redraw = undefined
-    body.replaceChildren(
-      h('div', { class: 'modal-head' }, h('h2', null, 'Add provider')),
-      providerSetup(() => list(), list),
-    )
+    content.replaceChildren(head('Add provider'), providerSetup(() => paint(), paint))
   }
-  list()
+  paint()
 }
 
 let redraw: (() => void) | undefined

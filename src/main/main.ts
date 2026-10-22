@@ -117,6 +117,7 @@ function buildState(): AppState {
   const active = activeProfile()
   return {
     platform: process.platform,
+    version: app.getVersion(),
     home: os.homedir(),
     secureKeys: safeStorage.isEncryptionAvailable(),
     ready: demo || (!!active && usable(active[1])),
@@ -221,7 +222,7 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
               rt.pending = { id, resolve }
               emit({ chatId, type: 'confirm', id, name, summary: preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary, preview: toPreviewDto(preview) })
             }),
-          onUsage: () => {},
+          onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output }),
         },
       })
       emit({ chatId, type: 'done', seconds: (Date.now() - t0) / 1000 })

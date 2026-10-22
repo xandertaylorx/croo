@@ -52,6 +52,27 @@ let raf = 0
 
 const running = (v: ChatView) => v.status !== 'idle'
 
+const fmtTokens = (n: number) => (n < 1000 ? String(Math.round(n)) : n < 10000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n / 1000)}k`)
+
+/** "12s · ~3.4k tokens": time so far and what the turn has used (estimated until the provider reports it). */
+function metaText(v: ChatView): string {
+  const live = running(v)
+  const parts: string[] = []
+  if (live && v.t0) parts.push(elapsed(performance.now() - v.t0))
+  const out = (v.tokens?.output ?? 0) + (live ? (v.streamed ?? 0) / 4 : 0)
+  const total = (v.tokens?.input ?? 0) + out
+  if (total >= 1) parts.push(`${live ? '~' : ''}${fmtTokens(total)} tokens`)
+  return parts.join(' · ')
+}
+
+const metaTip = (v: ChatView) => `Input ${(v.tokens?.input ?? 0).toLocaleString()} · Output ${Math.round((v.tokens?.output ?? 0) + (v.streamed ?? 0) / 4).toLocaleString()} tokens`
+
+// Keep the clock moving while a turn runs, without redrawing the whole status row.
+setInterval(() => {
+  const el = document.querySelector<HTMLElement>('.status-meta')
+  if (m && el && running(m.view)) (el.textContent = metaText(m.view), (el.dataset.tip = metaTip(m.view)))
+}, 1000)
+
 // ---------- items ----------
 
 function renderItem(item: Item): HTMLElement {
@@ -369,10 +390,10 @@ function paintStatus() {
   status.replaceChildren()
   if (v.status !== 'idle') {
     frog.set(v.status === 'thinking' ? 'thinking' : v.status)
-    status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'))
+    status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)))
   } else if (v.note) {
     frog.set(v.note.startsWith('Stopped') ? 'idle' : v.note.startsWith('Something') ? 'oops' : 'happy')
-    status.append(frog.el, h('span', { class: 'status-label' }, v.note))
+    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)))
   }
   m.send.replaceChildren(icon(running(v) ? 'stop' : 'arrowUp', running(v) ? 16 : 18))
   m.send.classList.toggle('stop', running(v))
@@ -395,7 +416,12 @@ export function handleEvent(ev: ChatEvent) {
       endThinking(v)
       setStatus(v, 'thinking')
       break
+    case 'usage':
+      v.tokens = { input: (v.tokens?.input ?? 0) + ev.input, output: (v.tokens?.output ?? 0) + ev.output }
+      v.streamed = 0
+      break
     case 'reasoning':
+      v.streamed = (v.streamed ?? 0) + ev.delta.length
       if (last?.kind === 'thinking' && !last.done) {
         last.text += ev.delta
         if (m?.view === v) touchText(last)
@@ -406,6 +432,7 @@ export function handleEvent(ev: ChatEvent) {
       }
       break
     case 'text':
+      v.streamed = (v.streamed ?? 0) + ev.delta.length
       endThinking(v)
       if (last?.kind === 'assistant' && last.streaming) {
         last.text += ev.delta
@@ -478,6 +505,9 @@ async function submit() {
   v.draft = ''
   autosize()
   m.stick = true
+  v.t0 = performance.now()
+  v.tokens = { input: 0, output: 0 }
+  v.streamed = 0
   push(v, { kind: 'user', text })
   setStatus(v, 'thinking')
   const res = await croo.send(v.id, text)

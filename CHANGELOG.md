@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- **Time and tokens**: a live clock and token count while the agent works, with the final tally and an input/output breakdown on hover
+- **Publish from the Git panel**: no remote yet? connect by URL or `owner/repo`, or create the repository on GitHub with `gh`; push and pull failures now explain themselves
+- **Effort levels** with a composer control, shown only for models that have one; reasoning settings are chosen per model (adaptive thinking on Claude 4.6+, token budgets on older models) and negotiated with the API instead of failing
+- **Settings redesign**: Providers, General and About panes; permission and effort defaults, shortcut list
+- **Wrapping**: the file viewer and every diff wrap long lines instead of scrolling sideways; the sidebar steps aside in narrow windows
+- Chat / Code icons clear the macOS window buttons
+
 ## 0.5.0
 
 - **Git panel** (`⌘⇧G`): branch and sync state, changed files with line counts and inline diffs, pick files, commit (`⌘↵`), push (publishes a new branch), pull (fast-forward only), `git init` for plain folders; change-count badge on the header button

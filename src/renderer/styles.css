@@ -147,7 +147,7 @@ html[data-platform='darwin'] #sidebar {
 }
 #main {
   flex: 1;
-  min-width: 0;
+  min-width: 360px;
   background: var(--bg);
   display: flex;
   flex-direction: column;
@@ -557,15 +557,15 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
 }
 .diff {
   max-height: 320px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-top: 1px solid var(--line);
   padding: 4px 0;
   font: 12px/1.6 var(--mono);
 }
 .dl {
   display: grid;
-  grid-template-columns: 46px 18px 1fr;
-  min-width: max-content;
+  grid-template-columns: 46px 18px minmax(0, 1fr);
 }
 .dl .no {
   text-align: right;
@@ -576,7 +576,8 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
   color: var(--text-3);
 }
 .dl .tx {
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding-right: 14px;
 }
 .dl.add {
@@ -726,6 +727,8 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
 }
 .composer-hint {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -1843,6 +1846,8 @@ button.inst:hover {
   display: flex;
   flex-direction: column;
   width: var(--side-w, 400px);
+  min-width: 280px;
+  max-width: calc(100vw - 340px);
   min-height: 0;
   border-left: 1px solid var(--line);
   background: var(--bg);
@@ -1902,7 +1907,8 @@ button.inst:hover {
 }
 .file-tree {
   flex: 1;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0 6px 12px;
 }
 .file-row {
@@ -1941,35 +1947,28 @@ button.inst:hover {
 .viewer {
   flex: 1;
   min-height: 0;
-  display: flex;
-  align-items: flex-start;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px 0 24px;
   user-select: text;
   font: 12px/1.65 var(--mono);
 }
-.gutter,
-.code-pre {
-  margin: 0;
-  padding: 10px 0 24px;
-  font: inherit;
+.vrow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
 }
-.gutter {
-  position: sticky;
-  left: 0;
-  flex: none;
-  padding: 10px 10px 24px 14px;
-  background: var(--bg);
+.ln {
+  padding-right: 12px;
   color: var(--text-3);
   text-align: right;
   user-select: none;
 }
-.code-pre {
-  padding-left: 6px;
-  padding-right: 20px;
-}
-.code-pre code {
+.lc {
+  display: block;
+  padding: 0 16px 0 4px;
   font: inherit;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .viewer-image {
   flex: 1;
@@ -2392,7 +2391,8 @@ button.inst:hover {
 .git-diff {
   max-height: 300px;
   margin: 2px 4px 8px 26px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 4px 0;
@@ -2515,4 +2515,294 @@ button.inst:hover {
   background: var(--bg);
   box-shadow: var(--shadow);
   animation: rise 0.12s ease-out;
+}
+
+/* ---------- publish card ---------- */
+
+.git-publish {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+.git-publish[hidden] {
+  display: none;
+}
+.git-publish-title {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.git-or {
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-align: center;
+}
+.input.small {
+  height: 30px;
+  font-size: 12.5px;
+}
+.seg.mini {
+  flex: none;
+  align-self: center;
+}
+.seg-text {
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 550;
+}
+.seg-text.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+
+.status-meta {
+  flex: none;
+  color: var(--text-3);
+  font: 11.5px var(--mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.status-meta:empty {
+  display: none;
+}
+.status-meta::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+/* ---------- settings ---------- */
+
+.modal-card.wide {
+  width: min(800px, 94vw);
+  max-height: none;
+  overflow: hidden;
+}
+.settings {
+  display: flex;
+  height: min(620px, 84vh);
+}
+.settings-nav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  width: 190px;
+  padding: 20px 10px;
+  border-right: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+.settings-title {
+  padding: 0 10px 14px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 550;
+  text-align: left;
+}
+.nav-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.nav-btn.on {
+  background: var(--active);
+  color: var(--text);
+}
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 26px 28px;
+  overflow-y: auto;
+}
+.pane-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.pane-head h2 {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.pane-head .muted {
+  margin-top: 3px;
+}
+.settings-pane > .btn {
+  align-self: flex-start;
+}
+.opts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+}
+.opt:hover {
+  background: var(--hover);
+}
+.opt.on {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--accent-soft);
+}
+.opt .icon {
+  color: var(--text-2);
+}
+.opt.mode-auto .icon,
+.opt.on .icon {
+  color: var(--accent);
+}
+.opt.mode-bypass .icon {
+  color: var(--warn);
+}
+.opt small {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chipbtn {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.chipbtn:hover {
+  background: var(--hover);
+}
+.chipbtn.on {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.pcard-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pcard-host {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.pcard-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.pcard-label {
+  flex: none;
+  width: 58px;
+  color: var(--text-3);
+}
+.pcard-val {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.pcard-val.warn {
+  color: var(--warn);
+}
+.pcard-val em {
+  color: var(--text-3);
+  font-style: normal;
+}
+.shortcuts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 28px;
+}
+.sc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.sc-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.sc-keys i {
+  color: var(--text-3);
+  font-style: normal;
+}
+@media (max-width: 680px) {
+  .settings {
+    flex-direction: column;
+  }
+  .settings-nav {
+    flex-direction: row;
+    width: auto;
+    padding: 10px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .settings-title {
+    display: none;
+  }
+  .opts,
+  .shortcuts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* In a narrow window the sidebar steps aside while a side panel is open, so the chat is never crushed. */
+@media (max-width: 960px) {
+  #app.side-open #sidebar {
+    margin-left: -256px;
+  }
+  #app.side-open .show-when-hidden {
+    display: inline-flex;
+  }
 }

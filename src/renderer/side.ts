@@ -2,7 +2,7 @@ import type { FsEntry, FsFile, GitFile, GitStatus } from '../shared/ipc.js'
 import { h, icon, tildify } from './dom.js'
 import { Frog } from './frog.js'
 import { parseDiff, statusLabel } from './gitdiff.js'
-import { highlight } from './highlight.js'
+import { highlightLines } from './highlight.js'
 import { bus, croo, remember, store } from './store.js'
 
 type Tab = 'files' | 'browser' | 'git'
@@ -176,14 +176,9 @@ const tree = (() => {
     if (f.kind === 'image') body = h('div', { class: 'viewer-image' }, h('img', { src: f.dataUrl, alt: name }))
     else if (f.kind === 'binary') body = h('div', { class: 'side-empty' }, `Can’t preview this file (${Math.round(f.size / 1024)} KB).`)
     else {
-      const text = f.text ?? ''
-      const lines = text.split('\n').length
-      body = h(
-        'div',
-        { class: 'viewer' },
-        h('pre', { class: 'gutter', 'aria-hidden': 'true' }, Array.from({ length: lines }, (_, i) => i + 1).join('\n')),
-        h('pre', { class: 'code-pre' }, h('code', { class: 'hljs', html: highlight(text, ext) })),
-      )
+      const lines = highlightLines(f.text ?? '', ext)
+      // One row per line, so long lines wrap and the line number stays beside the first part of it.
+      body = h('div', { class: 'viewer' }, lines.map((html, i) => h('div', { class: 'vrow' }, h('span', { class: 'ln', 'aria-hidden': 'true' }, String(i + 1)), h('code', { class: 'hljs lc', html: html || ' ' }))))
       if (f.truncated) body.append(h('div', { class: 'side-empty' }, 'Showing the first 400 KB.'))
     }
     return h(
@@ -250,6 +245,8 @@ const gitPanel = (() => {
   let message = ''
   let busy: '' | 'commit' | 'push' | 'pull' = ''
   let note: { ok: boolean; text: string } | null = null
+  let publishing = false
+  let publishCard: HTMLElement
   let top: HTMLElement | null = null
   let list: HTMLElement | null = null
   let foot: HTMLElement | null = null
@@ -279,6 +276,19 @@ const gitPanel = (() => {
 
   const load = async () => {
     if (cwd) apply(await croo.gitStatus(cwd))
+  }
+
+  /** Connect or create a remote, then push. Used by the Publish card. */
+  const publish = async (how: { remote: string } | { name: string; isPrivate: boolean }) => {
+    if (!cwd || !status || busy) return
+    busy = 'push'
+    note = null
+    paintFoot()
+    const res = 'remote' in how ? await croo.gitConnect(cwd, how.remote) : await croo.gitPublish(cwd, how.name, how.isPrivate)
+    busy = ''
+    note = { ok: res.ok, text: res.hint ? (res.output ? `${res.hint}\n\n${res.output}` : res.hint) : res.output }
+    if (res.ok) publishing = false
+    await load()
   }
 
   const run = async (kind: 'commit' | 'push' | 'pull') => {
@@ -395,6 +405,35 @@ const gitPanel = (() => {
     list.replaceChildren(h('div', { class: 'git-all' }, all, h('span', null, `${files().length} changed file${files().length === 1 ? '' : 's'}`)), ...files().map(fileRow))
   }
 
+  const paintPublish = (noRemote: boolean) => {
+    publishCard.hidden = !(noRemote && publishing)
+    if (publishCard.hidden || publishCard.dataset.built) return
+    publishCard.dataset.built = '1'
+    const name = h('input', { class: 'input small', value: (cwd ?? '').split('/').filter(Boolean).pop() ?? 'project', spellcheck: 'false', 'aria-label': 'Repository name' })
+    let priv = true
+    const vis = h('div', { class: 'seg mini' })
+    const paintVis = () =>
+      vis.replaceChildren(
+        h('button', { class: `seg-text ${priv ? 'on' : ''}`, type: 'button', onClick: () => ((priv = true), paintVis()) }, 'Private'),
+        h('button', { class: `seg-text ${priv ? '' : 'on'}`, type: 'button', onClick: () => ((priv = false), paintVis()) }, 'Public'),
+      )
+    paintVis()
+    const url = h('input', { class: 'input small', placeholder: 'you/project or a full URL', spellcheck: 'false', autocapitalize: 'off', 'aria-label': 'Remote address' })
+    const go = () => url.value.trim() && void publish({ remote: url.value })
+    url.addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), go()))
+    publishCard.replaceChildren(
+      h('div', { class: 'git-publish-title' }, 'Connect this folder to a remote'),
+      ...(status?.gh
+        ? [
+            h('div', { class: 'inline-row' }, name, vis),
+            h('button', { class: 'btn primary', type: 'button', onClick: () => void publish({ name: name.value.trim(), isPrivate: priv }) }, icon('external', 14), 'Create on GitHub and push'),
+            h('div', { class: 'git-or' }, 'or use an existing repository'),
+          ]
+        : [h('p', { class: 'muted' }, 'Create an empty repository on GitHub (or anywhere), then paste its address here. Install the GitHub CLI (gh) to create one from this panel.')]),
+      h('div', { class: 'inline-row' }, url, h('button', { class: 'btn', type: 'button', onClick: go }, 'Connect & push')),
+    )
+  }
+
   const paintFoot = () => {
     if (!foot) return
     const n = chosen().length
@@ -405,7 +444,11 @@ const gitPanel = (() => {
     const ahead = status?.ahead ?? 0
     pushBtn.disabled = !!busy || !!(status?.upstream && ahead === 0)
     pushBtn.replaceChildren(busy === 'push' ? h('span', { class: 'spinner' }) : icon('arrowUp', 14), 'Push', ...(ahead ? [h('small', null, `${ahead}`)] : []))
-    pushBtn.dataset.tip = status?.upstream ? `Push to ${status.upstream}` : 'Publish this branch to origin'
+    const noRemote = !!status?.repo && !status.remotes.length
+    if (noRemote) pushBtn.replaceChildren(busy === 'push' ? h('span', { class: 'spinner' }) : icon('external', 14), 'Publish…')
+    pushBtn.disabled = !!busy
+    pushBtn.dataset.tip = noRemote ? 'Connect this folder to GitHub' : status?.upstream ? `Push to ${status.upstream}` : 'Publish this branch to origin'
+    paintPublish(noRemote)
     pullBtn.disabled = !!busy || !status?.upstream
     pullBtn.replaceChildren(busy === 'pull' ? h('span', { class: 'spinner' }) : icon('arrowDown', 14))
     noteEl.hidden = !note
@@ -433,10 +476,11 @@ const gitPanel = (() => {
     })
     box.value = message
     commitBtn = h('button', { class: 'btn primary grow', type: 'button', title: 'Commit the selected files (⌘↵)', onClick: () => void run('commit') })
-    pushBtn = h('button', { class: 'btn grow', type: 'button', onClick: () => void run('push') })
+    pushBtn = h('button', { class: 'btn grow', type: 'button', onClick: () => (status && !status.remotes.length ? ((publishing = !publishing), paintFoot()) : void run('push')) })
     pullBtn = h('button', { class: 'btn icon', type: 'button', title: 'Pull (fast-forward only)', onClick: () => void run('pull') })
     noteEl = h('pre', { class: 'git-note', hidden: true })
-    foot = h('div', { class: 'git-foot' }, box, h('div', { class: 'git-actions' }, commitBtn, pushBtn, pullBtn), noteEl)
+    publishCard = h('div', { class: 'git-publish', hidden: true })
+    foot = h('div', { class: 'git-foot' }, publishCard, box, h('div', { class: 'git-actions' }, commitBtn, pushBtn, pullBtn), noteEl)
     const el = h(
       'div',
       { class: 'side-col' },
@@ -461,6 +505,7 @@ const gitPanel = (() => {
       diffs.clear()
       message = ''
       note = null
+      publishing = false
       setBadge(0)
     },
   }

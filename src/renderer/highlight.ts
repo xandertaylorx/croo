@@ -50,3 +50,25 @@ export function highlight(code: string, lang: string): string {
     return esc(code)
   }
 }
+
+/**
+ * Highlighted HTML split into one balanced string per line. Spans that cross a newline (block comments,
+ * template strings) are closed at the end of each line and reopened on the next, so lines can be laid out
+ * and wrapped independently.
+ */
+export function highlightLines(code: string, lang: string): string[] {
+  const html = highlight(code, lang)
+  const lines: string[] = []
+  const open: string[] = []
+  let cur = ''
+  for (const m of html.matchAll(/(<span[^>]*>)|(<\/span>)|(\n)|([^<\n]+)/g)) {
+    if (m[1]) (open.push(m[1]), (cur += m[1]))
+    else if (m[2]) (open.pop(), (cur += '</span>'))
+    else if (m[3]) {
+      lines.push(cur + '</span>'.repeat(open.length))
+      cur = open.join('')
+    } else cur += m[4]
+  }
+  lines.push(cur + '</span>'.repeat(open.length))
+  return lines
+}

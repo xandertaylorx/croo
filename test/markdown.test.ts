@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from '../src/renderer/markdown.js'
+import { highlightLines } from '../src/renderer/highlight.js'
 
 describe('renderMarkdown', () => {
   it('escapes html', () => {
@@ -19,5 +20,18 @@ describe('renderMarkdown', () => {
   it('renders nested lists and tables', () => {
     expect(renderMarkdown('- a\n  - b\n- c')).toBe('<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>')
     expect(renderMarkdown('| a | b |\n|---|---|\n| 1 | 2 |')).toContain('<td>2</td>')
+  })
+})
+
+describe('highlightLines', () => {
+  it('splits into lines with balanced tags, even across a block comment', () => {
+    const lines = highlightLines('/* one\ntwo */\nconst a = 1', 'ts')
+    expect(lines).toHaveLength(3)
+    for (const l of lines) expect((l.match(/<span/g) ?? []).length).toBe((l.match(/<\/span>/g) ?? []).length)
+    expect(lines[1]).toContain('hljs-comment')
+    expect(lines[2]).toContain('hljs-keyword')
+  })
+  it('escapes unknown languages and keeps empty lines', () => {
+    expect(highlightLines('a < b\n\nc', 'nope')).toEqual(['a &lt; b', '', 'c'])
   })
 })
