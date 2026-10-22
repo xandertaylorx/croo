@@ -108,8 +108,14 @@
         <a class="btn ghost" id="dl-intel" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>Intel Mac</span></a>
         <a class="btn ghost" id="dl-zip" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>.zip</span></a>
       </div>
-      <p class="fine left">Open the <code>.dmg</code>, drag Croo to Applications. Croo is not notarized yet, so macOS may block the first launch: open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b>. <span id="platform-note"></span></p>
+      <p class="fine left">Easiest: paste the command below into Terminal. It installs Croo and opens it with no macOS warning. <span id="platform-note"></span></p>
     </div>
+    <div class="cmd" role="group" aria-label="Install with Terminal">
+      <span class="prompt" aria-hidden="true">$</span>
+      <code id="cmd-install">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
+      <button class="copy" type="button" data-copy="#cmd-install" aria-label="Copy command">Copy</button>
+    </div>
+    <p class="fine left">Downloaded the <code>.dmg</code> instead? Croo isn't notarized (that needs a paid Apple account), so macOS says it's "damaged". Run <code>xattr -cr /Applications/Croo.app</code> once, or use the command above.</p>
     <p class="or">or build it from source</p>
     <div class="cmd" role="group" aria-label="Build from source">
       <span class="prompt" aria-hidden="true">$</span>
