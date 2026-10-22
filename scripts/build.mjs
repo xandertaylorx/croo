@@ -6,7 +6,7 @@ const watch = process.argv.includes('--watch')
 
 const common = { bundle: true, sourcemap: true, logLevel: 'info' }
 const targets = [
-  { ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main/main.js', platform: 'node', format: 'esm', target: 'node22', external: ['electron'] },
+  { ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main/main.js', platform: 'node', format: 'esm', target: 'node22', external: ['electron', 'node-pty'] },
   // Sandboxed preload scripts must be CommonJS.
   { ...common, entryPoints: ['src/main/preload.ts'], outfile: 'dist/main/preload.cjs', platform: 'node', format: 'cjs', target: 'node22', external: ['electron'] },
   { ...common, entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', format: 'iife', target: 'chrome140' },
@@ -14,6 +14,7 @@ const targets = [
 
 function copyStatic() {
   fs.mkdirSync('dist/renderer', { recursive: true })
+  fs.copyFileSync('node_modules/@xterm/xterm/css/xterm.css', 'dist/renderer/xterm.css')
   for (const f of ['index.html', 'styles.css']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`)
 }
 

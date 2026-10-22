@@ -12,7 +12,7 @@ npm run typecheck
 
 Guidelines:
 
-- Prefer Node built-ins and native `fetch` over new dependencies. The app ships with zero runtime dependencies (Electron and the build tools are dev-only).
+- Prefer Node built-ins and native `fetch` over new dependencies. The only runtime dependency is `node-pty` (for the terminal panel); Electron, xterm and the build tools are dev-only.
 - Add or update tests for behaviour changes (`test/`).
 - Colours and layout live in `src/renderer/styles.css`; the frog is drawn in `src/renderer/frog.ts`.
 - Never commit API keys, tokens or personal config.

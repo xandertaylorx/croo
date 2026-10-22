@@ -1,10 +1,11 @@
 import type { Msg, Provider, ToolCall, Usage } from './types.js'
-import { TOOLS, toolByName, truncate, type Preview } from './tools/index.js'
+import { TOOLS, toolByName, truncate, type Preview, type Tool } from './tools/index.js'
 import type { Permissions } from './permissions.js'
 
 export interface AgentHooks {
   onThinking(): void
   onText(delta: string): void
+  onReasoning?(delta: string): void
   onTextEnd(): void
   onToolRunning(name: string, summary: string): void
   onToolDone(name: string, summary: string, ok: boolean, result: string): void
@@ -20,6 +21,8 @@ export interface TurnOptions {
   permissions: Permissions
   hooks: AgentHooks
   signal: AbortSignal
+  /** Defaults to every tool. Pass [] for a plain conversation. */
+  tools?: Tool[]
   maxSteps?: number
 }
 
@@ -37,8 +40,9 @@ export async function runTurn(o: TurnOptions): Promise<void> {
     let res
     try {
       res = await o.provider.chat(
-        { system: o.system, messages: o.messages, tools: TOOLS.map((t) => t.spec), signal },
+        { system: o.system, messages: o.messages, tools: (o.tools ?? TOOLS).map((t) => t.spec), signal },
         hooks.onText,
+        hooks.onReasoning,
       )
     } catch (e) {
       hooks.onTextEnd()
@@ -47,7 +51,7 @@ export async function runTurn(o: TurnOptions): Promise<void> {
     }
     hooks.onTextEnd()
     hooks.onUsage(res.usage)
-    o.messages.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined })
+    o.messages.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined, thinking: res.thinking || undefined, meta: res.meta })
     if (!res.toolCalls.length) return
 
     for (let i = 0; i < res.toolCalls.length; i++) {
@@ -73,8 +77,8 @@ async function execute(c: ToolCall, o: TurnOptions): Promise<Msg> {
   try {
     summary = tool.summarize(c.args)
     const ctx = { cwd: o.cwd, signal: o.signal }
-    const preview = tool.prepare?.(c.args, ctx)
-    if (preview && o.permissions.needsApproval(c.name)) {
+    if (o.permissions.needsApproval(c.name, c.args)) {
+      const preview: Preview = tool.prepare?.(c.args, ctx) ?? { kind: 'read', tool: c.name, summary }
       const answer = await hooks.confirm(c.name, preview)
       if (answer === 'n') {
         hooks.onToolDone(c.name, summary, false, 'denied')

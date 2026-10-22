@@ -15,8 +15,9 @@ export function toItems(messages: Msg[]): Item[] {
 
   const items: Item[] = []
   for (const m of messages) {
-    if (m.role === 'user') items.push({ kind: 'user', text: m.content })
+    if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content })
     else if (m.role === 'assistant') {
+      if (m.thinking?.trim()) items.push({ kind: 'thinking', text: m.thinking, done: true })
       if (m.content.trim()) items.push({ kind: 'assistant', text: m.content })
       for (const c of m.toolCalls ?? []) {
         let summary = ''
@@ -33,7 +34,7 @@ export function toItems(messages: Msg[]): Item[] {
 }
 
 export function toPreviewDto(p: Preview): PreviewDto {
-  if (p.kind === 'command') return p
+  if (p.kind !== 'diff') return p
   const all = diffLines(p.before, p.after)
   const lines = collapseContext(all, 3)
   const added = all.filter((l) => l.type === '+').length

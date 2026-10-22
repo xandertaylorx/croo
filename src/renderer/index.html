@@ -5,12 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'" />
     <title>Croo</title>
+    <link rel="stylesheet" href="xterm.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="app">
       <aside id="sidebar"></aside>
-      <main id="main"></main>
+      <main id="main">
+        <div id="pane"></div>
+        <section id="term" hidden></section>
+      </main>
+      <aside id="side" hidden></aside>
     </div>
     <div id="modal-root"></div>
     <script src="app.js"></script>

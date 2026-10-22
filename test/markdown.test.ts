@@ -13,8 +13,8 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('href="javascript')
   })
   it('renders fenced code, even when the fence is not closed yet', () => {
-    expect(renderMarkdown('```ts\nconst a = 1\n```')).toContain('<code>const a = 1</code>')
-    expect(renderMarkdown('```ts\nconst a = 1')).toContain('<code>const a = 1</code>')
+    expect(renderMarkdown('```ts\nconst a = 1\n```')).toContain('hljs-keyword')
+    expect(renderMarkdown('```ts\nconst a = 1')).toContain('hljs-number')
   })
   it('renders nested lists and tables', () => {
     expect(renderMarkdown('- a\n  - b\n- c')).toBe('<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>')

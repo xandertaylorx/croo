@@ -1,3 +1,5 @@
+import { highlight } from './highlight.js'
+
 /** Small markdown → HTML renderer for chat replies. Everything is escaped first; only known tags are emitted. */
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -37,7 +39,7 @@ export function renderMarkdown(src: string): string {
       i++ // closing fence (a streaming reply may not have one yet)
       const lang = fence[2]
       out.push(
-        `<div class="code"><div class="code-head"><span>${esc(lang)}</span><button class="code-copy" type="button">Copy</button></div><pre><code>${esc(body.join('\n'))}</code></pre></div>`,
+        `<div class="code"><div class="code-head"><span>${esc(lang)}</span><button class="code-copy" type="button">Copy</button></div><pre><code class="hljs">${highlight(body.join('\n'), lang)}</code></pre></div>`,
       )
       continue
     }

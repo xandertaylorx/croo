@@ -8,6 +8,8 @@ import { Ignore, globMatcher, walk } from './ignore.js'
 export type Preview =
   | { kind: 'diff'; path: string; before: string; after: string }
   | { kind: 'command'; command: string }
+  /** Shown only in manual mode, where even read-only tools ask. */
+  | { kind: 'read'; tool: string; summary: string }
 
 export interface ToolContext {
   cwd: string

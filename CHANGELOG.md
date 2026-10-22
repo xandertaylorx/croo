@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0
+
+- **Chat and Code modes**: a switch at the top of the sidebar. Chat is plain conversation with a flat chat list; Code is folders plus the agent
+- **Files panel** (`⌘⇧E`): file tree that respects `.gitignore`, syntax-highlighted viewer, images, reveal in Finder, send `@path` to the composer
+- **Browser panel** (`⌘⇧B`): minimal in-app browser with a start page that finds your running dev servers
+- **AGENTS.md and CLAUDE.md** are both read every turn (plus CROO.md), shown under the composer; **`/init`** studies the project and writes AGENTS.md
+- **Thinking**: reasoning streams as an expandable "Thought for…" row (Anthropic extended thinking with signed blocks round-tripped, Gemini thoughts, `reasoning_content` from OpenAI-compatible providers); saved with the chat
+- **Syntax highlighting** in chat code blocks and the file viewer, light and dark
+- **Model picker** under the composer lists the models your key can use, with search; type any id to use it
+- **Settings redesign**: provider cards, masked keys, verified key updates, per-provider model lists; keys are now encrypted with the OS keychain
+- **Tooltips** with keycaps for every button's shortcut
+
+## 0.3.0
+
+- Permission modes under the chat bar: Manual (ask for everything), Auto (ask only when it matters, with a conservative safe-command check), Bypass (never ask); `⇧Tab` cycles
+- Built-in terminal panel: `⌘J` toggles, `⌘T` opens a new tab while it is focused; real shells via node-pty, themed to match
+- New frog: the solid pixel-block look from the terminal, redrawn with lively animation (breathing, blinking, glancing, ribbiting, hopping, catching flies, sleeping) and reactions to thinking / working / waiting / done / errors
+
 ## 0.2.0
 
 Croo is now a desktop app instead of a terminal CLI.

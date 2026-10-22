@@ -1,20 +1,24 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Cancelled, runTurn } from '../agent.js'
-import { isLocalUrl, loadConfig, resolveApiKey, saveConfig, defaultConfig } from '../config.js'
+import { isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig, defaultConfig } from '../config.js'
 import { Permissions } from '../permissions.js'
-import { buildSystemPrompt } from '../prompt.js'
+import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles } from '../prompt.js'
 import { demoProvider } from '../providers/demo.js'
 import { createProvider } from '../providers/index.js'
-import { checkProfile } from '../providers/models.js'
+import { checkProfile, listModels } from '../providers/models.js'
 import { PRESETS } from '../providers/presets.js'
 import { deleteSession, listSessions, loadSession, newSession, saveSession, titleFrom, type Session, type SessionMeta } from '../session.js'
-import type { AddProfileRequest, AppState, ChatEvent, ChatInfo, Command, Result } from '../shared/ipc.js'
+import type { AddProfileRequest, AppState, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result } from '../shared/ipc.js'
+import { Ignore } from '../tools/ignore.js'
+import { safePath } from '../tools/index.js'
 import { clip, toItems, toPreviewDto } from '../transcript.js'
-import type { Config, Profile } from '../types.js'
+import { Terminals } from './terminal.js'
+import type { Config, PermissionMode, Profile } from '../types.js'
 import { loadWorkspaces, saveWorkspaces } from '../workspaces.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -36,6 +40,9 @@ interface Runtime {
   pending?: { id: string; resolve: (a: 'y' | 'n' | 'a') => void }
 }
 const runtimes = new Map<string, Runtime>()
+const terminals = new Terminals()
+
+const modelCache = new Map<string, { at: number; value: Awaited<ReturnType<typeof listModels>> }>()
 
 const usable = (p: Profile) => !!resolveApiKey(p) || (p.type === 'openai' && isLocalUrl(p.baseUrl))
 const activeProfile = (): [string, Profile] | null => {
@@ -43,9 +50,35 @@ const activeProfile = (): [string, Profile] | null => {
   return p ? [cfg.activeProfile, p] : null
 }
 
+/** Keys are stored encrypted with the OS keychain when it is available (and never in plain text on disk then). */
+function persist() {
+  const out: Config = { ...cfg, profiles: {} }
+  for (const [name, p] of Object.entries(cfg.profiles)) {
+    const q = { ...p }
+    if (q.apiKey && safeStorage.isEncryptionAvailable()) {
+      try {
+        q.apiKeyEnc = safeStorage.encryptString(q.apiKey).toString('base64')
+        delete q.apiKey
+      } catch {}
+    }
+    out.profiles[name] = q
+  }
+  saveConfig(out)
+}
+
+function decryptKeys() {
+  for (const p of Object.values(cfg.profiles)) {
+    if (!p.apiKeyEnc) continue
+    try {
+      p.apiKey = safeStorage.decryptString(Buffer.from(p.apiKeyEnc, 'base64'))
+    } catch {} // a different machine or keychain: the profile just shows as having no key
+  }
+}
+
 function loadAll() {
   try {
     cfg = loadConfig() ?? defaultConfig()
+    decryptKeys()
     configError = undefined
   } catch (e: any) {
     cfg = defaultConfig()
@@ -57,12 +90,22 @@ function loadAll() {
 
 function chatsFor(cwd: string): ChatInfo[] {
   const byId = new Map<string, ChatInfo>()
-  for (const m of saved.values()) if (m.cwd === cwd) byId.set(m.id, { id: m.id, title: m.title, updatedAt: m.updatedAt, running: false })
+  for (const m of saved.values()) if (m.kind === 'code' && m.cwd === cwd) byId.set(m.id, { id: m.id, title: m.title, updatedAt: m.updatedAt, running: false })
   for (const [id, rt] of runtimes) {
-    if (rt.session.cwd !== cwd) continue
+    if (rt.session.kind === 'chat' || rt.session.cwd !== cwd) continue
     byId.set(id, { id, title: titleFrom(rt.session.messages), updatedAt: rt.session.updatedAt, running: !!rt.abort })
   }
   // Brand-new empty chats first, then newest.
+  return [...byId.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+function plainChats(): ChatInfo[] {
+  const byId = new Map<string, ChatInfo>()
+  for (const m of saved.values()) if (m.kind === 'chat') byId.set(m.id, { id: m.id, title: m.title, updatedAt: m.updatedAt, running: false })
+  for (const [id, rt] of runtimes) {
+    if (rt.session.kind !== 'chat') continue
+    byId.set(id, { id, title: titleFrom(rt.session.messages), updatedAt: rt.session.updatedAt, running: !!rt.abort })
+  }
   return [...byId.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
@@ -71,8 +114,10 @@ function buildState(): AppState {
   return {
     platform: process.platform,
     home: os.homedir(),
+    secureKeys: safeStorage.isEncryptionAvailable(),
     ready: demo || (!!active && usable(active[1])),
     demo,
+    permissionMode: cfg.permissionMode,
     configError,
     profiles: Object.entries(cfg.profiles).map(([name, p]) => ({
       name,
@@ -80,8 +125,12 @@ function buildState(): AppState {
       model: p.model,
       active: name === cfg.activeProfile,
       hasKey: usable(p),
+      keyHint: p.apiKey ? maskKey(p.apiKey) : resolveApiKey(p) ? 'from environment' : '',
+      keySource: p.apiKey ? 'saved' : resolveApiKey(p) ? 'env' : 'none',
+      local: isLocalUrl(p.baseUrl),
     })),
-    workspaces: workspaces.map((p) => ({ path: p, name: path.basename(p) || p, missing: !isDir(p), chats: chatsFor(p) })),
+    workspaces: workspaces.map((p) => ({ path: p, name: path.basename(p) || p, missing: !isDir(p), instructions: instructionFiles(p), chats: chatsFor(p) })),
+    chats: plainChats(),
   }
 }
 
@@ -123,7 +172,7 @@ function runtime(id: string): Runtime | null {
   if (existing) return existing
   const session = loadSession(id)
   if (!session) return null
-  const rt: Runtime = { session, permissions: new Permissions() }
+  const rt: Runtime = { session, permissions: new Permissions(cfg.permissionMode) }
   runtimes.set(id, rt)
   return rt
 }
@@ -132,7 +181,10 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
   const { session } = rt
   const messages = session.messages
   const before = messages.length
-  messages.push({ role: 'user', content: text })
+  const plain = session.kind === 'chat'
+  // "/init" sends the long research prompt; the chat only ever shows "/init".
+  const init = !plain && /^\/init(\s|$)/.test(text.trim())
+  messages.push(init ? { role: 'user', content: `${INIT_PROMPT}${text.trim().slice(5) ? `\n\nExtra guidance: ${text.trim().slice(5).trim()}` : ''}`, display: text.trim() } : { role: 'user', content: text })
   const ac = (rt.abort = new AbortController())
   const t0 = Date.now()
   const active = activeProfile()
@@ -143,13 +195,15 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
       const provider = demo ? demoProvider() : createProvider(active![1])
       await runTurn({
         provider,
-        system: buildSystemPrompt(session.cwd),
+        system: plain ? buildChatPrompt() : buildSystemPrompt(session.cwd),
         messages,
         cwd: session.cwd,
         permissions: rt.permissions,
         signal: ac.signal,
+        tools: plain ? [] : undefined,
         hooks: {
           onThinking: () => emit({ chatId, type: 'thinking' }),
+          onReasoning: (delta) => emit({ chatId, type: 'reasoning', delta }),
           onText: (delta) => emit({ chatId, type: 'text', delta }),
           onTextEnd: () => emit({ chatId, type: 'textEnd' }),
           onToolRunning: (name, summary) => emit({ chatId, type: 'toolRunning', name, summary }),
@@ -158,7 +212,7 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
             new Promise((resolve) => {
               const id = Math.random().toString(36).slice(2)
               rt.pending = { id, resolve }
-              emit({ chatId, type: 'confirm', id, name, summary: preview.kind === 'diff' ? preview.path : preview.command, preview: toPreviewDto(preview) })
+              emit({ chatId, type: 'confirm', id, name, summary: preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary, preview: toPreviewDto(preview) })
             }),
           onUsage: () => {},
         },
@@ -176,7 +230,7 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
       session.updatedAt = new Date().toISOString()
       if (!demo && messages.length) {
         saveSession(session)
-        saved.set(session.id, { id: session.id, cwd: session.cwd, title: session.title ?? titleFrom(messages), updatedAt: session.updatedAt })
+        saved.set(session.id, { id: session.id, cwd: session.cwd, title: session.title ?? titleFrom(messages), updatedAt: session.updatedAt, kind: session.kind === 'chat' ? 'chat' : 'code' })
       }
       pushState()
     }
@@ -227,7 +281,7 @@ async function addProfile(req: AddProfileRequest): Promise<Result> {
   for (let i = 2; cfg.profiles[name] && usable(cfg.profiles[name]); i++) name = `${base}${i}`
   cfg = { ...cfg, profiles: { ...cfg.profiles, [name]: profile }, activeProfile: name }
   demo = false
-  saveConfig(cfg)
+  persist()
   pushState()
   return { ok: true }
 }
@@ -249,17 +303,18 @@ function registerIpc() {
     pushState()
   })
 
-  ipcMain.handle('chat:new', (_e, cwd: string) => {
+  ipcMain.handle('chat:new', (_e, cwd: string, kind: ChatKind) => {
+    const folder = kind === 'chat' ? '' : cwd
     // Reuse an empty chat instead of piling up blanks.
-    for (const [id, rt] of runtimes) if (rt.session.cwd === cwd && !rt.session.messages.length) return id
-    const session = newSession(cwd, activeProfile()?.[0] ?? 'demo')
-    runtimes.set(session.id, { session, permissions: new Permissions() })
+    for (const [id, rt] of runtimes) if ((rt.session.kind === 'chat') === (kind === 'chat') && rt.session.cwd === folder && !rt.session.messages.length) return id
+    const session = newSession(folder, activeProfile()?.[0] ?? 'demo', kind)
+    runtimes.set(session.id, { session, permissions: new Permissions(cfg.permissionMode) })
     pushState()
     return session.id
   })
   ipcMain.handle('chat:open', (_e, id: string) => {
     const rt = runtime(id)
-    return rt ? { cwd: rt.session.cwd, title: titleFrom(rt.session.messages), items: toItems(rt.session.messages) } : null
+    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages) } : null
   })
   ipcMain.handle('chat:delete', (_e, id: string) => {
     const rt = runtimes.get(id)
@@ -273,7 +328,7 @@ function registerIpc() {
     const rt = runtime(chatId)
     if (!rt) return { ok: false, error: 'That chat no longer exists.' }
     if (rt.abort) return { ok: false, error: 'Croo is still working on the last message.' }
-    if (!isDir(rt.session.cwd)) return { ok: false, error: `The folder ${rt.session.cwd} no longer exists.` }
+    if (rt.session.kind !== 'chat' && !isDir(rt.session.cwd)) return { ok: false, error: `The folder ${rt.session.cwd} no longer exists.` }
     const active = activeProfile()
     if (!demo && !(active && usable(active[1]))) return { ok: false, error: 'Add a provider in Settings first.' }
     startTurn(chatId, rt, text)
@@ -296,15 +351,125 @@ function registerIpc() {
     if (!cfg.profiles[name]) return
     cfg = { ...cfg, activeProfile: name }
     demo = false
-    saveConfig(cfg)
+    persist()
     pushState()
   })
   ipcMain.handle('profile:remove', (_e, name: string) => {
     const { [name]: _gone, ...rest } = cfg.profiles
     cfg = { ...cfg, profiles: rest, activeProfile: cfg.activeProfile === name ? (Object.keys(rest)[0] ?? '') : cfg.activeProfile }
-    saveConfig(cfg)
+    persist()
     pushState()
   })
+  ipcMain.handle('mode:set', (_e, mode: PermissionMode) => {
+    if (!['manual', 'auto', 'bypass'].includes(mode)) return
+    cfg = { ...cfg, permissionMode: mode }
+    for (const rt of runtimes.values()) rt.permissions.mode = mode
+    persist()
+    pushState()
+  })
+
+  ipcMain.handle('models:list', async (_e, name?: string) => {
+    const key = name ?? cfg.activeProfile
+    const p = cfg.profiles[key]
+    if (demo && !name) return { models: [{ id: 'demo (no API)' }] }
+    if (!p) return { models: [], error: 'No provider selected.' }
+    const cacheKey = `${key}|${p.baseUrl ?? ''}|${p.apiKey ?? ''}`
+    const hit = modelCache.get(cacheKey)
+    if (hit && Date.now() - hit.at < 5 * 60_000 && !hit.value.error) return hit.value
+    const value = await listModels(p)
+    modelCache.set(cacheKey, { at: Date.now(), value })
+    return value
+  })
+  ipcMain.handle('models:set', (_e, name: string, model: string) => {
+    const p = cfg.profiles[name]
+    if (!p || !model.trim()) return
+    cfg = { ...cfg, profiles: { ...cfg.profiles, [name]: { ...p, model: model.trim() } } }
+    persist()
+    pushState()
+  })
+  ipcMain.handle('profile:key', async (_e, name: string, apiKey: string): Promise<Result> => {
+    const p = cfg.profiles[name]
+    if (!p) return { ok: false, error: 'That provider no longer exists.' }
+    if (!apiKey.trim()) return { ok: false, error: 'Paste the new key first.' }
+    const next: Profile = { ...p, apiKey: apiKey.trim() }
+    delete next.apiKeyEnc
+    const check = await checkProfile(next)
+    if (check.error) return { ok: false, error: check.error }
+    cfg = { ...cfg, profiles: { ...cfg.profiles, [name]: next } }
+    modelCache.clear()
+    persist()
+    pushState()
+    return { ok: true }
+  })
+
+  // Files for the side panel. Only folders that were added to the sidebar can be read.
+  const inWorkspace = (cwd: string) => {
+    if (!workspaces.includes(cwd)) throw new Error('Not a known folder.')
+  }
+  ipcMain.handle('fs:list', (_e, cwd: string, rel: string): FsEntry[] => {
+    inWorkspace(cwd)
+    const root = fs.realpathSync(cwd)
+    const dir = safePath(cwd, rel || '.')
+    const ig = new Ignore()
+    let walkDir = root
+    ig.addDir(root, root)
+    for (const part of path.relative(root, dir).split(path.sep).filter(Boolean)) {
+      walkDir = path.join(walkDir, part)
+      ig.addDir(walkDir, root)
+    }
+    const out: FsEntry[] = []
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === '.git' || e.name === '.DS_Store' || e.name === 'node_modules') continue
+      const r = path.relative(root, path.join(dir, e.name)).split(path.sep).join('/')
+      const isD = e.isDirectory()
+      if (!isD && !e.isFile()) continue
+      if (ig.ignored(r, isD)) continue
+      out.push({ name: e.name, rel: r, dir: isD })
+    }
+    return out.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
+  })
+  ipcMain.handle('fs:read', (_e, cwd: string, rel: string): FsFile | null => {
+    inWorkspace(cwd)
+    const abs = safePath(cwd, rel)
+    const stat = fs.statSync(abs)
+    if (!stat.isFile()) return null
+    const ext = path.extname(abs).slice(1).toLowerCase()
+    const mime = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon', bmp: 'image/bmp' } as Record<string, string>)[ext]
+    if (mime) return stat.size > 5_000_000 ? { rel, kind: 'binary', size: stat.size } : { rel, kind: 'image', size: stat.size, dataUrl: `data:${mime};base64,${fs.readFileSync(abs).toString('base64')}` }
+    const MAX = 400_000
+    const fd = fs.openSync(abs, 'r')
+    const buf = Buffer.alloc(Math.min(stat.size, MAX))
+    fs.readSync(fd, buf, 0, buf.length, 0)
+    fs.closeSync(fd)
+    if (buf.subarray(0, 8000).includes(0)) return { rel, kind: 'binary', size: stat.size }
+    return { rel, kind: 'text', size: stat.size, text: buf.toString('utf8'), truncated: stat.size > MAX }
+  })
+  ipcMain.handle('fs:reveal', (_e, cwd: string, rel: string) => {
+    inWorkspace(cwd)
+    shell.showItemInFolder(safePath(cwd, rel || '.'))
+  })
+  ipcMain.handle('browser:ports', async () => {
+    const probe = (port: number) =>
+      new Promise<number | null>((resolve) => {
+        const sock = net.connect({ port, host: '127.0.0.1', timeout: 250 })
+        sock.once('connect', () => (sock.destroy(), resolve(port)))
+        sock.once('timeout', () => (sock.destroy(), resolve(null)))
+        sock.once('error', () => resolve(null))
+      })
+    const found = await Promise.all([3000, 3001, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8888].map(probe))
+    return found.filter((p): p is number => p !== null)
+  })
+  ipcMain.handle('shell:open', (_e, url: string) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+  })
+
+  ipcMain.handle('term:create', (_e, cwd: string, cols: number, rows: number) =>
+    terminals.create(cwd, cols, rows, (id, data) => send('term:data', { id, data }), (id) => send('term:exit', { id })),
+  )
+  ipcMain.on('term:write', (_e, id: string, data: string) => terminals.write(id, data))
+  ipcMain.on('term:resize', (_e, id: string, cols: number, rows: number) => terminals.resize(id, cols, rows))
+  ipcMain.on('term:kill', (_e, id: string) => terminals.kill(id))
+
   ipcMain.handle('demo:start', () => {
     demo = true
     pushState()
@@ -330,6 +495,7 @@ function createWindow() {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   })
   win.once('ready-to-show', () => win?.show())
@@ -345,6 +511,14 @@ function createWindow() {
       e.preventDefault()
       if (/^https?:/i.test(url)) void shell.openExternal(url)
     }
+  })
+  // The in-app browser is a <webview>. Lock it down: no preload, no node, web URLs only.
+  win.webContents.on('will-attach-webview', (e, prefs, params) => {
+    delete prefs.preload
+    prefs.nodeIntegration = false
+    prefs.contextIsolation = true
+    prefs.sandbox = true
+    if (!/^(https?:|about:blank)/i.test(params.src ?? '')) e.preventDefault()
   })
   void win.loadFile(path.join(here, '..', 'renderer', 'index.html'))
 }
@@ -368,6 +542,12 @@ function buildMenu() {
       label: 'View',
       submenu: [
         { label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+B', click: cmd('toggleSidebar') },
+        { label: 'Toggle Terminal', accelerator: 'CmdOrCtrl+J', click: cmd('toggleTerminal') },
+        { label: 'Toggle Files', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('toggleFiles') },
+        { label: 'Toggle Browser', accelerator: 'CmdOrCtrl+Shift+B', click: cmd('toggleBrowser') },
+        { type: 'separator' },
+        { label: 'Chat Mode', accelerator: 'CmdOrCtrl+1', click: cmd('modeChat') },
+        { label: 'Code Mode', accelerator: 'CmdOrCtrl+2', click: cmd('modeCode') },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -381,6 +561,15 @@ function buildMenu() {
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
+
+// Pages in the in-app browser that try to open a new window load in place instead.
+app.on('web-contents-created', (_e, contents) => {
+  if (contents.getType() !== 'webview') return
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) void contents.loadURL(url)
+    return { action: 'deny' }
+  })
+})
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) app.quit()
@@ -408,5 +597,6 @@ else {
   })
   app.on('before-quit', () => {
     for (const rt of runtimes.values()) stopChat(rt)
+    terminals.killAll()
   })
 }

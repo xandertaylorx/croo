@@ -1,6 +1,8 @@
 import { PRESETS, type Preset } from '../providers/presets.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
+import type { AppState } from '../shared/ipc.js'
+import { modelList } from './models.js'
 import { croo, store } from './store.js'
 
 type Choice = Preset | 'custom'
@@ -76,7 +78,7 @@ export function renderOnboarding(root: HTMLElement) {
       h(
         'div',
         { class: 'onboarding-body' },
-        new Frog(96).el,
+        new Frog(168).el,
         h('h1', null, 'Welcome to Croo'),
         h('p', { class: 'lede' }, 'A small coding agent with a frog in it. Bring your own API key or a local model. No account, no telemetry.'),
         store.state.configError ? h('p', { class: 'form-error' }, store.state.configError) : null,
@@ -90,6 +92,8 @@ export function renderOnboarding(root: HTMLElement) {
 // ---------- settings ----------
 
 let modal: HTMLElement | null = null
+/** Which inline panel is open on each provider card. */
+const panels = new Map<string, 'key' | 'models'>()
 
 export function closeSettings() {
   modal?.remove()
@@ -104,6 +108,32 @@ const onKey = (e: KeyboardEvent) => {
   }
 }
 
+function keyForm(name: string, close: () => void): HTMLElement {
+  const input = h('input', { class: 'input', type: 'password', placeholder: 'Paste the new API key', spellcheck: 'false', autocomplete: 'off' })
+  const error = h('p', { class: 'form-error', role: 'alert' })
+  const save = h('button', { class: 'btn primary', type: 'submit' }, 'Verify & save')
+  requestAnimationFrame(() => input.focus())
+  return h(
+    'form',
+    {
+      class: 'inline-form',
+      onSubmit: async (e: Event) => {
+        e.preventDefault()
+        error.textContent = ''
+        save.disabled = true
+        save.textContent = 'Checking…'
+        const res = await croo.updateKey(name, input.value)
+        if (res.ok) return close()
+        error.textContent = res.error
+        save.disabled = false
+        save.textContent = 'Verify & save'
+      },
+    },
+    h('div', { class: 'inline-row' }, input, save, h('button', { class: 'btn ghost', type: 'button', onClick: close }, 'Cancel')),
+    error,
+  )
+}
+
 export function openSettings() {
   if (modal) return closeSettings()
   const body = h('div', { class: 'modal-body' })
@@ -112,9 +142,44 @@ export function openSettings() {
   document.getElementById('modal-root')!.append(modal)
   document.addEventListener('keydown', onKey, true)
 
+  const profileCard = (p: AppState['profiles'][number], demo: boolean) => {
+    const panel = panels.get(p.name)
+    const toggle = (kind: 'key' | 'models') => {
+      panels.get(p.name) === kind ? panels.delete(p.name) : panels.set(p.name, kind)
+      list()
+    }
+    const active = p.active && !demo
+    return h(
+      'div',
+      { class: `pcard ${active ? 'active' : ''} ${p.hasKey ? '' : 'nokey'}` },
+      h(
+        'div',
+        { class: 'pcard-top' },
+        h('span', { class: 'pcard-name' }, p.name),
+        active ? h('span', { class: 'pill' }, 'Active') : h('button', { class: 'btn small', type: 'button', onClick: () => void croo.useProfile(p.name) }, 'Use'),
+        h('span', { class: 'push-right' }),
+        h('button', { class: 'icon-btn small danger', type: 'button', title: 'Remove provider', onClick: () => (panels.delete(p.name), void croo.removeProfile(p.name)) }, icon('trash', 14)),
+      ),
+      h('div', { class: 'pcard-meta' }, h('span', { class: 'mono' }, p.model), h('span', null, p.provider)),
+      h(
+        'div',
+        { class: 'pcard-key' },
+        icon('key', 14),
+        p.hasKey
+          ? h('span', null, p.local && !p.keyHint ? 'Local server, no key needed' : p.keyHint, p.keySource === 'saved' ? h('em', null, store.state.secureKeys ? ' · encrypted in your keychain' : ' · saved on this Mac') : p.keySource === 'env' ? h('em', null, ' · set with an environment variable') : null)
+          : h('span', { class: 'warn' }, 'No key yet'),
+        h('span', { class: 'push-right' }),
+        h('button', { class: `btn small ${panel === 'key' ? 'on' : ''} ${p.hasKey ? '' : 'primary'}`, type: 'button', onClick: () => toggle('key') }, p.hasKey ? 'Update key' : 'Add key'),
+        h('button', { class: `btn small ${panel === 'models' ? 'on' : ''}`, type: 'button', disabled: !p.hasKey, onClick: () => toggle('models') }, 'Models'),
+      ),
+      panel === 'key' ? keyForm(p.name, () => (panels.delete(p.name), list())) : null,
+      panel === 'models' ? h('div', { class: 'pcard-models' }, modelList({ profile: p.name, current: p.model, autofocus: true, onPick: (id) => void croo.setModel(p.name, id) })) : null,
+    )
+  }
+
   const list = () => {
     redraw = list
-    const { profiles, demo } = store.state
+    const { profiles, demo, secureKeys } = store.state
     body.replaceChildren(
       h('div', { class: 'modal-head' }, h('h2', null, 'Settings'), h('button', { class: 'icon-btn', type: 'button', title: 'Close', onClick: closeSettings }, icon('x', 16))),
       h('div', { class: 'section-label' }, 'Providers'),
@@ -122,21 +187,15 @@ export function openSettings() {
         ? h(
             'div',
             { class: 'profiles' },
-            demo ? h('div', { class: 'profile active' }, h('div', { class: 'profile-main' }, h('b', null, 'Demo'), h('small', null, 'scripted fake model, nothing is saved'))) : null,
-            profiles.map((p) =>
-              h(
-                'div',
-                { class: `profile ${p.active && !demo ? 'active' : ''}`, role: 'button', tabindex: 0, onClick: () => void croo.useProfile(p.name) },
-                h('span', { class: 'radio' }),
-                h('div', { class: 'profile-main' }, h('b', null, p.name), h('small', null, `${p.model} · ${p.provider}${p.hasKey ? '' : ' · no key'}`)),
-                h('button', { class: 'row-btn show', type: 'button', title: 'Remove provider', onClick: (e: Event) => (e.stopPropagation(), void croo.removeProfile(p.name)) }, icon('trash', 14)),
-              ),
-            ),
+            demo ? h('div', { class: 'pcard active' }, h('div', { class: 'pcard-top' }, h('span', { class: 'pcard-name' }, 'Demo'), h('span', { class: 'pill' }, 'Active')), h('div', { class: 'pcard-meta' }, h('span', null, 'A scripted fake model. Nothing is saved.'))) : null,
+            profiles.map((p) => profileCard(p, demo)),
           )
         : h('p', { class: 'muted' }, 'No providers yet.'),
       h('button', { class: 'btn', type: 'button', onClick: add }, icon('plus', 14), 'Add provider'),
-      h('div', { class: 'section-label' }, 'About'),
-      h('p', { class: 'muted' }, 'Croo runs on your machine. Your keys, chats and folders stay in ~/.config/croo and ~/.local/share/croo. The only network calls are to the model provider you choose.'),
+      h('div', { class: 'section-label' }, 'Project instructions'),
+      h('p', { class: 'muted' }, 'Croo reads AGENTS.md, CLAUDE.md and CROO.md in each folder at the start of every turn. Type ', h('kbd', null, '/init'), ' in a chat and it will study the project and write AGENTS.md for you.'),
+      h('div', { class: 'section-label' }, 'Privacy'),
+      h('p', { class: 'muted' }, secureKeys ? 'Your API keys are encrypted with your Mac’s keychain before they are written to disk. ' : 'Your API keys are saved in ~/.config/croo (readable only by you). ', 'Chats and folders stay in ~/.local/share/croo. The only network calls are to the model provider you choose.'),
     )
   }
   const add = () => {
@@ -146,13 +205,12 @@ export function openSettings() {
       providerSetup(() => list(), list),
     )
   }
-  redraw = list
   list()
 }
 
 let redraw: (() => void) | undefined
 
-/** The provider list follows state changes (switching or removing a provider) while the sheet is open. */
+/** The provider list follows state changes (switching, removing, updating a key) while the sheet is open. */
 export function refreshSettings() {
   if (modal) redraw?.()
 }

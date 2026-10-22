@@ -7,8 +7,9 @@ export interface ToolCall {
 }
 
 export type Msg =
-  | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
+  /** `display` is what the chat shows when it differs from what the model got (e.g. "/init"). */
+  | { role: 'user'; content: string; display?: string }
+  | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; thinking?: string; /** Provider data that must round-trip, e.g. Anthropic's signed thinking blocks. */ meta?: unknown }
   | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean }
 
 export interface ToolSpec {
@@ -32,12 +33,14 @@ export interface ChatRequest {
 
 export interface ChatResult {
   text: string
+  thinking?: string
+  meta?: unknown
   toolCalls: ToolCall[]
   usage: Usage
 }
 
 export interface Provider {
-  chat(req: ChatRequest, onText: (delta: string) => void): Promise<ChatResult>
+  chat(req: ChatRequest, onText: (delta: string) => void, onThinking?: (delta: string) => void): Promise<ChatResult>
 }
 
 export type ProviderType = 'openai' | 'anthropic' | 'gemini'
@@ -47,14 +50,20 @@ export interface Profile {
   model: string
   baseUrl?: string
   apiKey?: string
+  /** The key encrypted with the OS keychain (written by the desktop app instead of apiKey). */
+  apiKeyEnc?: string
   /** Optional USD per million tokens, for the cost estimate in the status line. */
   inputPerMTok?: number
   outputPerMTok?: number
 }
+
+/** manual: ask for everything · auto: ask only when it matters · bypass: never ask */
+export type PermissionMode = 'manual' | 'auto' | 'bypass'
 
 export interface Config {
   activeProfile: string
   profiles: Record<string, Profile>
   pet: boolean
   animations: boolean
+  permissionMode: PermissionMode
 }

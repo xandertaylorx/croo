@@ -9,6 +9,8 @@ export interface Session {
   profile: string
   updatedAt: string
   title?: string
+  /** `chat` is a plain conversation with no folder or tools; everything else is a coding session. */
+  kind?: 'chat' | 'code'
   messages: Msg[]
 }
 
@@ -17,20 +19,21 @@ export interface SessionMeta {
   cwd: string
   title: string
   updatedAt: string
+  kind: 'chat' | 'code'
 }
 
 const sessionsDir = (dir = dataDir()) => path.join(dir, 'sessions')
 const safeId = (id: string) => /^[\w.-]+$/.test(id) && !id.includes('..')
 
-export function newSession(cwd: string, profile: string): Session {
+export function newSession(cwd: string, profile: string, kind: 'chat' | 'code' = 'code'): Session {
   const id = new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6)
-  return { id, cwd, profile, updatedAt: new Date().toISOString(), messages: [] }
+  return { id, cwd, profile, kind, updatedAt: new Date().toISOString(), messages: [] }
 }
 
 /** A chat is named after its first message. */
 export function titleFrom(messages: Msg[]): string {
   const first = messages.find((m) => m.role === 'user')
-  const line = first?.content.trim().split('\n')[0] ?? ''
+  const line = (first?.display ?? first?.content ?? '').trim().split('\n')[0]
   if (!line) return 'New chat'
   return line.length > 60 ? line.slice(0, 59) + '…' : line
 }
@@ -73,7 +76,7 @@ export function listSessions(dir = dataDir()): SessionMeta[] {
     try {
       const s = JSON.parse(fs.readFileSync(path.join(sessionsDir(dir), f), 'utf8')) as Session
       if (!Array.isArray(s.messages) || !s.messages.length || typeof s.cwd !== 'string') continue
-      out.push({ id: s.id, cwd: s.cwd, title: s.title || titleFrom(s.messages), updatedAt: s.updatedAt })
+      out.push({ id: s.id, cwd: s.cwd, title: s.title || titleFrom(s.messages), updatedAt: s.updatedAt, kind: s.kind === 'chat' ? 'chat' : 'code' })
     } catch {}
   }
   return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))

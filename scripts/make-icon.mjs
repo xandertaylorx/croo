@@ -4,19 +4,18 @@ import fs from 'node:fs'
 import zlib from 'node:zlib'
 
 const SIZE = 1024
-// Same art as the in-app frog (src/renderer/frog.ts), smiling.
+// Same art as the in-app frog (src/renderer/frog.ts): a solid block with cut-out eyes and smile.
 const FROG = [
-  '..GGG...GGG..',
-  '.GWKWGGGWKWG.',
-  '.GWKWGGGWKWG.',
-  'GGGGGGGGGGGGG',
-  'GGKGGGGGGGKGG',
-  'GGLKKKKKKKLGG',
-  '.GLLLLLLLLLG.',
-  '.GGGGGGGGGGG.',
-  'GGG.......GGG',
+  '.GGGGG...GGGGG.',
+  '.GG.GG...GG.GG.',
+  'GGG.GGGGGGG.GGG',
+  'GGGGGGGGGGGGGGG',
+  'GGGG.GGGGG.GGGG',
+  'GGGGG.....GGGGG',
+  '.GGGGGGGGGGGGG.',
+  '..GG.......GG..',
 ]
-const COLORS = { G: [94, 214, 126], L: [168, 232, 189], K: [18, 40, 26], W: [255, 255, 255] }
+const COLORS = { G: [94, 214, 126] }
 
 const margin = 0.1 // macOS icons leave breathing room around the squircle
 const body = SIZE * (1 - 2 * margin)

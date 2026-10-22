@@ -22,7 +22,7 @@ export function toOpenAIMessages(system: string, messages: Msg[]) {
 export function openaiProvider(profile: Profile, apiKey?: string): Provider {
   const base = (profile.baseUrl || DEFAULT_BASE_URLS.openai).replace(/\/+$/, '')
   return {
-    async chat(req: ChatRequest, onText): Promise<ChatResult> {
+    async chat(req: ChatRequest, onText, onThinking): Promise<ChatResult> {
       const body: any = {
         model: profile.model,
         messages: toOpenAIMessages(req.system, req.messages),
@@ -36,6 +36,7 @@ export function openaiProvider(profile: Profile, apiKey?: string): Provider {
       const res = await postJson(`${base}/chat/completions`, headers, body, req.signal)
 
       let text = ''
+      let thinking = ''
       const calls = new Map<number, { id: string; name: string; args: string }>()
       const usage = { input: 0, output: 0 }
       for await (const data of sseData(res)) {
@@ -52,6 +53,12 @@ export function openaiProvider(profile: Profile, apiKey?: string): Provider {
         }
         const delta = chunk.choices?.[0]?.delta
         if (!delta) continue
+        // DeepSeek, Groq and friends stream reasoning as reasoning_content; OpenRouter and Ollama as reasoning.
+        const thought = delta.reasoning_content || delta.reasoning
+        if (typeof thought === 'string' && thought) {
+          thinking += thought
+          onThinking?.(thought)
+        }
         if (delta.content) {
           text += delta.content
           onText(delta.content)
@@ -68,7 +75,7 @@ export function openaiProvider(profile: Profile, apiKey?: string): Provider {
       const toolCalls: ToolCall[] = [...calls.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([i, c]) => ({ id: c.id || `call_${i}_${Date.now()}`, name: c.name, args: parseArgs(c.args) }))
-      return { text, toolCalls, usage }
+      return { text, thinking, toolCalls, usage }
     },
   }
 }

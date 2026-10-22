@@ -2,7 +2,10 @@ import type { ChatEvent, Item, PreviewDto } from '../shared/ipc.js'
 import { h, icon, tildify, type IconName } from './dom.js'
 import { Frog, SAYINGS } from './frog.js'
 import { renderMarkdown } from './markdown.js'
+import { openModelMenu } from './models.js'
+import { refreshFiles } from './side.js'
 import { bus, croo, store, type ChatView } from './store.js'
+import type { PermissionMode } from '../shared/ipc.js'
 
 const VERBS: Record<string, [string, string, IconName]> = {
   read_file: ['Reading', 'Read', 'file'],
@@ -11,6 +14,14 @@ const VERBS: Record<string, [string, string, IconName]> = {
   list_files: ['Listing', 'Listed', 'list'],
   grep: ['Searching', 'Searched', 'search'],
   bash: ['Running', 'Ran', 'terminal'],
+}
+const TITLES: Record<string, string> = {
+  bash: 'Run this command?',
+  write_file: 'Write this file?',
+  edit_file: 'Make this edit?',
+  read_file: 'Read this file?',
+  list_files: 'List these files?',
+  grep: 'Search the project?',
 }
 const verb = (name: string, running: boolean): string => VERBS[name]?.[running ? 0 : 1] ?? name
 
@@ -23,6 +34,8 @@ interface Mounted {
   input: HTMLTextAreaElement
   send: HTMLButtonElement
   frog: Frog
+  mode: HTMLButtonElement
+  chip: HTMLButtonElement
   hero: HTMLElement | null
   stick: boolean
 }
@@ -30,6 +43,7 @@ interface Mounted {
 let m: Mounted | null = null
 const open = new WeakSet<Item>()
 const dirty = new Set<Item>()
+const started = new WeakMap<Item, number>()
 let raf = 0
 
 const running = (v: ChatView) => v.status !== 'idle'
@@ -42,12 +56,44 @@ function renderItem(item: Item): HTMLElement {
       return h('div', { class: 'msg user' }, h('div', { class: 'bubble' }, item.text))
     case 'assistant':
       return h('div', { class: 'msg assistant md', html: renderMarkdown(item.text) })
+    case 'thinking':
+      return renderThinking(item)
     case 'error':
       return h('div', { class: 'msg error' }, item.text)
     case 'tool':
       return renderTool(item)
     case 'confirm':
       return renderConfirm(item)
+  }
+}
+
+const duration = (s: number) => (s < 1 ? 'a moment' : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`)
+
+/** Claude Code style: a quiet "Thought for 4s" row that opens to show the reasoning. */
+function renderThinking(item: Extract<Item, { kind: 'thinking' }>): HTMLElement {
+  const isOpen = open.has(item)
+  const lastLine = item.text.trim().split('\n').filter(Boolean).pop() ?? ''
+  return h(
+    'div',
+    { class: `think ${item.done ? 'done' : 'live'} ${isOpen ? 'open' : ''}` },
+    h(
+      'button',
+      { class: 'think-row', type: 'button', onClick: () => (open.has(item) ? open.delete(item) : open.add(item), touch(item)) },
+      icon('chevron', 12),
+      h('span', { class: `think-label ${item.done ? '' : 'shimmer'}` }, item.done ? (item.seconds ? `Thought for ${duration(item.seconds)}` : 'Thought') : 'Thinking…'),
+      !item.done && !isOpen && lastLine ? h('span', { class: 'think-preview' }, lastLine) : null,
+    ),
+    isOpen ? h('div', { class: 'think-body' }, item.text.trim()) : null,
+  )
+}
+
+/** Close the reasoning block that was streaming, recording how long it took. */
+function endThinking(v: ChatView) {
+  for (const it of v.items) {
+    if (it.kind !== 'thinking' || it.done) continue
+    it.done = true
+    it.seconds = (performance.now() - (started.get(it) ?? performance.now())) / 1000
+    if (m?.view === v) touch(it)
   }
 }
 
@@ -86,7 +132,8 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
     if (a === 'n') setStatus(v, 'thinking')
     else setStatus(v, 'working', `${verb(item.name, true)} ${item.summary}`)
   }
-  const title = item.name === 'bash' ? 'Run this command?' : item.name === 'write_file' ? 'Write this file?' : 'Make this edit?'
+  const title = TITLES[item.name] ?? 'Allow this?'
+  const manual = store.state.permissionMode === 'manual'
   const p = item.preview
   return h(
     'div',
@@ -103,7 +150,7 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
       'div',
       { class: 'confirm-actions' },
       h('button', { class: 'btn primary', type: 'button', onClick: () => answer('y') }, 'Allow'),
-      h('button', { class: 'btn', type: 'button', onClick: () => answer('a') }, `Always allow ${item.name === 'bash' ? 'commands' : 'edits'}`),
+      manual ? null : h('button', { class: 'btn', type: 'button', onClick: () => answer('a') }, `Always allow ${item.name === 'bash' ? 'commands' : item.name === 'edit_file' || item.name === 'write_file' ? 'edits' : 'this'}`),
       h('button', { class: 'btn ghost', type: 'button', onClick: () => answer('n') }, 'Deny'),
       h('span', { class: 'confirm-keys' }, '⌘↵ allow · esc deny'),
     ),
@@ -112,6 +159,7 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
 
 function renderPreview(p: PreviewDto): HTMLElement {
   if (p.kind === 'command') return h('pre', { class: 'cmd' }, h('span', { class: 'prompt' }, '$ '), p.command)
+  if (p.kind === 'read') return h('pre', { class: 'cmd' }, p.summary)
   const rows = p.lines.map((l) =>
     l === null
       ? h('div', { class: 'dl gap' }, '⋯')
@@ -160,6 +208,7 @@ function touchText(item: Item) {
     for (const it of dirty) {
       const el = m?.els.get(it)
       if (el && it.kind === 'assistant') el.innerHTML = renderMarkdown(it.text)
+      else if (el && it.kind === 'thinking') touch(it)
     }
     dirty.clear()
     follow()
@@ -183,10 +232,10 @@ function paintStatus() {
   const { view: v, status, frog } = m
   status.replaceChildren()
   if (v.status !== 'idle') {
-    frog.set(v.status === 'working' ? 'working' : v.status === 'waiting' ? 'idle' : 'thinking')
+    frog.set(v.status === 'thinking' ? 'thinking' : v.status)
     status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'))
   } else if (v.note) {
-    frog.set(v.note.startsWith('Stopped') ? 'idle' : 'happy')
+    frog.set(v.note.startsWith('Stopped') ? 'idle' : v.note.startsWith('Something') ? 'oops' : 'happy')
     status.append(frog.el, h('span', { class: 'status-label' }, v.note))
   }
   m.send.replaceChildren(icon(running(v) ? 'stop' : 'arrowUp', running(v) ? 16 : 18))
@@ -207,9 +256,21 @@ export function handleEvent(ev: ChatEvent) {
   const last = v.items[v.items.length - 1]
   switch (ev.type) {
     case 'thinking':
+      endThinking(v)
       setStatus(v, 'thinking')
       break
+    case 'reasoning':
+      if (last?.kind === 'thinking' && !last.done) {
+        last.text += ev.delta
+        if (m?.view === v) touchText(last)
+      } else {
+        const item: Item = { kind: 'thinking', text: ev.delta, done: false }
+        started.set(item, performance.now())
+        push(v, item)
+      }
+      break
     case 'text':
+      endThinking(v)
       if (last?.kind === 'assistant' && last.streaming) {
         last.text += ev.delta
         if (m?.view === v) touchText(last)
@@ -223,6 +284,7 @@ export function handleEvent(ev: ChatEvent) {
       }
       break
     case 'toolRunning':
+      endThinking(v)
       push(v, { kind: 'tool', name: ev.name, summary: ev.summary, status: 'running' })
       setStatus(v, 'working', `${verb(ev.name, true)} ${ev.summary}`)
       break
@@ -238,20 +300,25 @@ export function handleEvent(ev: ChatEvent) {
       break
     }
     case 'confirm':
+      endThinking(v)
       push(v, { kind: 'confirm', id: ev.id, name: ev.name, summary: ev.summary, preview: ev.preview })
       setStatus(v, 'waiting', 'Waiting for your OK')
       break
     case 'done':
+      refreshFiles()
+      endThinking(v)
       setStatus(v, 'idle', '', ev.seconds >= 1 ? `Done in ${ev.seconds.toFixed(1)}s` : 'Done')
       break
     case 'cancelled':
+      endThinking(v)
       closeOpenConfirms(v)
       setStatus(v, 'idle', '', 'Stopped')
       break
     case 'error':
+      endThinking(v)
       closeOpenConfirms(v)
       push(v, { kind: 'error', text: ev.message })
-      setStatus(v, 'idle')
+      setStatus(v, 'idle', '', 'Something went wrong')
       break
   }
 }
@@ -294,10 +361,12 @@ export function focusComposer() {
   m?.input.focus()
 }
 
+const allChats = () => [...store.state.workspaces.flatMap((w) => w.chats), ...store.state.chats]
+
 /** The header title follows the chat's name as it changes (it is named after the first message). */
 export function refreshHeader() {
   if (!m) return
-  const title = store.state.workspaces.flatMap((w) => w.chats).find((c) => c.id === m!.view.id)?.title
+  const title = allChats().find((c) => c.id === m!.view.id)?.title
   const el = document.querySelector('.chat-title')
   if (el && title) el.textContent = title
 }
@@ -310,16 +379,20 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const state = store.state
   const folder = state.workspaces.find((w) => w.path === view.cwd)
   const profile = state.profiles.find((p) => p.active)
-  const title = state.workspaces.flatMap((w) => w.chats).find((c) => c.id === view.id)?.title ?? 'New chat'
+  const title = allChats().find((c) => c.id === view.id)?.title ?? 'New chat'
+  const plain = view.kind === 'chat'
 
   const thread = h('div', { class: 'thread' })
   const scroll = h('div', { class: 'scroll' }, thread)
   const status = h('div', { class: 'status' })
-  const input = h('textarea', { class: 'input-area', rows: 1, placeholder: `Ask Croo about ${folder?.name ?? 'this folder'}…`, spellcheck: 'true' })
+  const input = h('textarea', { class: 'input-area', rows: 1, placeholder: plain ? 'Message Croo…' : `Ask Croo about ${folder?.name ?? 'this folder'}…`, spellcheck: 'true' })
   const send = h('button', { class: 'send', type: 'button', onClick: () => (running(view) ? void croo.stop(view.id) : void submit()) })
-  const frog = new Frog(26)
+  const frog = new Frog(42)
 
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, hero: null, stick: true }
+  const mode = h('button', { class: 'mode no-drag', type: 'button', onClick: () => toggleModeMenu() })
+  const chip = h('button', { class: 'chip no-drag', type: 'button', onClick: () => openModelMenu(chip, composerWrap) })
+  const composerWrap = h('div', { class: 'composer-wrap' })
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, hero: null, stick: true }
   const mounted = m
 
   input.value = view.draft
@@ -327,9 +400,21 @@ export function showChat(view: ChatView, root: HTMLElement) {
     view.draft = input.value
     autosize()
     syncSend()
+    updateSlash()
   })
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (slashOpen() && (e.key === 'Tab' || (e.key === 'Enter' && input.value.trim() !== '/init'))) {
+      e.preventDefault()
+      input.value = '/init '
+      input.dispatchEvent(new Event('input'))
+    } else if (slashOpen() && e.key === 'Escape') {
+      e.stopPropagation()
+      closeSlash()
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      if (plain) return
+      e.preventDefault()
+      cycleMode()
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault()
       void submit()
     }
@@ -351,10 +436,13 @@ export function showChat(view: ChatView, root: HTMLElement) {
     mounted.hero = h(
       'div',
       { class: 'hero' },
-      new Frog(104).el,
+      new Frog(168).el,
       h('p', { class: 'hero-say' }, `“${SAYINGS[Math.floor(Math.random() * SAYINGS.length)]}”`),
-      h('h1', null, 'What should we work on?'),
-      h('p', { class: 'hero-path' }, tildify(view.cwd, state.home)),
+      h('h1', null, plain ? 'What’s on your mind?' : 'What should we work on?'),
+      plain ? null : h('p', { class: 'hero-path' }, tildify(view.cwd, state.home)),
+      !plain && folder && !folder.instructions.length
+        ? h('button', { class: 'hero-tip', type: 'button', onClick: () => (input.value = '/init', input.dispatchEvent(new Event('input')), input.focus()) }, 'No AGENTS.md yet. Type ', h('kbd', null, '/init'), ' and I will study the project and write one.')
+        : null,
     )
     thread.append(mounted.hero)
   }
@@ -374,28 +462,125 @@ export function showChat(view: ChatView, root: HTMLElement) {
         { class: 'chat-head drag' },
         h('button', { class: 'icon-btn no-drag show-when-hidden', type: 'button', title: 'Show sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.remove('sidebar-hidden') }, icon('sidebar', 17)),
         h('span', { class: 'chat-title' }, title),
-        h('span', { class: 'chat-folder' }, folder?.name ?? ''),
+        h('span', { class: 'chat-folder' }, plain ? '' : (folder?.name ?? '')),
+        ...(plain
+          ? []
+          : [
+              h('span', { class: 'push-right' }),
+              h('button', { class: 'icon-btn no-drag btn-files', type: 'button', title: 'Files (⌘⇧E)', onClick: () => bus.files() }, icon('folder', 17)),
+              h('button', { class: 'icon-btn no-drag btn-browser', type: 'button', title: 'Browser (⌘⇧B)', onClick: () => bus.browser() }, icon('globe', 17)),
+              h('button', { class: 'icon-btn no-drag btn-term', type: 'button', title: 'Terminal (⌘J)', onClick: () => bus.terminal() }, icon('terminal', 17)),
+            ]),
       ),
       scroll,
-      h(
-        'div',
-        { class: 'composer-wrap' },
-        h('div', { class: 'composer' }, input, send),
-        h(
-          'div',
-          { class: 'composer-hint' },
-          h('span', null, tildify(view.cwd, state.home)),
-          h('button', { class: 'chip no-drag', type: 'button', title: 'Provider settings', onClick: () => bus.settings() }, state.demo ? 'demo model' : (profile?.model ?? 'no model')),
-        ),
-      ),
+      composerWrap,
     ),
   )
+  composerWrap.append(
+    h('div', { class: 'composer' }, input, send),
+    h(
+      'div',
+      { class: 'composer-hint' },
+      plain ? null : mode,
+      plain
+        ? h('span', { class: 'cwd' })
+        : h('span', { class: 'cwd' }, tildify(view.cwd, state.home)),
+      plain || !folder ? null : instructionChip(folder.instructions, input),
+      chip,
+    ),
+  )
+  bus.insert = (text) => {
+    input.value = input.value ? `${input.value.replace(/\s*$/, ' ')}${text}` : text
+    input.dispatchEvent(new Event('input'))
+    input.focus()
+  }
   paintStatus()
+  refreshMode()
   autosize()
+  void profile
   requestAnimationFrame(() => {
     scroll.scrollTop = scroll.scrollHeight
     input.focus()
   })
+}
+
+// ---------- permission mode ----------
+
+const MODES: { id: PermissionMode; label: string; icon: IconName; desc: string }[] = [
+  { id: 'manual', label: 'Manual', icon: 'shield', desc: 'Asks before every action, even reading a file.' },
+  { id: 'auto', label: 'Auto', icon: 'shieldCheck', desc: 'Reads, edits in this folder and safe commands just run. Anything else asks.' },
+  { id: 'bypass', label: 'Bypass', icon: 'bolt', desc: 'Never asks. Every command runs immediately.' },
+]
+
+export function refreshMode() {
+  if (!m) return
+  const cur = MODES.find((x) => x.id === store.state.permissionMode) ?? MODES[1]
+  m.mode.className = `mode no-drag mode-${cur.id}`
+  m.mode.dataset.tip = 'Permission mode'
+  m.mode.dataset.key = '⇧Tab'
+  m.mode.replaceChildren(icon(cur.icon, 14), h('span', null, cur.label), icon('chevronDown', 12))
+  const { demo, profiles } = store.state
+  const model = demo ? 'demo model' : (profiles.find((p) => p.active)?.model ?? 'no model')
+  m.chip.dataset.tip = 'Switch model'
+  m.chip.replaceChildren(h('span', null, model), icon('chevronDown', 11))
+}
+
+/** Which AGENTS.md / CLAUDE.md files Croo is reading here, or a nudge to create one. */
+function instructionChip(files: string[], input: HTMLTextAreaElement): HTMLElement {
+  if (files.length) {
+    return h('span', { class: 'inst', 'data-tip': 'Croo reads these at the start of every turn', 'data-key': '' }, icon('file', 12), files.join(' · '))
+  }
+  return h('button', { class: 'inst none no-drag', type: 'button', 'data-tip': 'Have Croo study the project and write AGENTS.md', onClick: () => (input.value = '/init', input.dispatchEvent(new Event('input')), input.focus()) }, icon('file', 12), '/init')
+}
+
+// ---------- slash commands ----------
+
+const slashOpen = () => !!document.querySelector('.slash-menu')
+function closeSlash() {
+  document.querySelector('.slash-menu')?.remove()
+}
+function updateSlash() {
+  if (!m || m.view.kind === 'chat') return
+  const v = m.input.value
+  const show = /^\/[a-z]*$/.test(v) && '/init'.startsWith(v)
+  if (!show) return closeSlash()
+  if (slashOpen()) return
+  m.mode.closest('.composer-wrap')?.append(
+    h('div', { class: 'slash-menu', role: 'listbox' }, h('button', { class: 'slash-item on', type: 'button', onMousedown: (e: Event) => e.preventDefault(), onClick: () => (m!.input.value = '/init ', m!.input.dispatchEvent(new Event('input')), m!.input.focus()) }, h('b', null, '/init'), h('span', null, 'Study this project and write AGENTS.md'), h('kbd', null, '⇥'))),
+  )
+}
+
+function cycleMode() {
+  const i = MODES.findIndex((x) => x.id === store.state.permissionMode)
+  void croo.setMode(MODES[(i + 1) % MODES.length].id)
+}
+
+function toggleModeMenu() {
+  const existing = document.querySelector('.mode-menu')
+  if (existing) return existing.remove()
+  const close = () => {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', esc, true)
+  }
+  const outside = (e: MouseEvent) => !menu.contains(e.target as Node) && !m?.mode.contains(e.target as Node) && close()
+  const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), close())
+  const menu = h(
+    'div',
+    { class: 'mode-menu', role: 'menu' },
+    MODES.map((x) =>
+      h(
+        'button',
+        { class: `mode-item mode-${x.id} ${x.id === store.state.permissionMode ? 'on' : ''}`, type: 'button', role: 'menuitemradio', onClick: () => (void croo.setMode(x.id), close()) },
+        icon(x.icon, 16),
+        h('span', { class: 'mode-text' }, h('b', null, x.label), h('small', null, x.desc)),
+        x.id === store.state.permissionMode ? icon('check', 15) : null,
+      ),
+    ),
+  )
+  m?.mode.closest('.composer-wrap')?.append(menu)
+  document.addEventListener('mousedown', outside, true)
+  document.addEventListener('keydown', esc, true)
 }
 
 /** ⌘↵ allows and Esc denies whatever the chat is waiting on. */

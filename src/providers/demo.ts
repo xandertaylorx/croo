@@ -19,7 +19,22 @@ const frog = "ribbit"
 console.log(frog)
 \`\`\`
 
+\`\`\`bash
+npm test && git status
+\`\`\`
+
 Let me look around, then propose a file so you can try the permission prompt.
+`
+
+const THOUGHT = `The user wants a quick tour. I'll show markdown, a list and some code, then look around the folder and propose a file so they can try the approval prompt.`
+
+const CHAT = `## Hi, I'm the demo
+In **Chat** mode there are no folders or tools, just a conversation. A real model would answer here. This one only shows how replies look:
+
+\`\`\`python
+def greet(name: str) -> str:
+    return f"ribbit, {name}!"
+\`\`\`
 `
 
 const OUTRO = `All done. That was the demo: tool cards, a diff prompt, streaming and the spinner.
@@ -38,13 +53,20 @@ const lastUser = (req: ChatRequest) => req.messages.map((m) => m.role).lastIndex
 /** Scripted stand-in for a model: streams markdown, calls list_files, then write_file. */
 export function demoProvider(): Provider {
   return {
-    async chat(req: ChatRequest, onText): Promise<ChatResult> {
+    async chat(req: ChatRequest, onText, onThinking): Promise<ChatResult> {
       const usage = { input: 120, output: 80 }
-      await sleep(900, req.signal) // let the spinner and frog show
       const last = req.messages[req.messages.length - 1]
       if (last?.role === 'user') {
+        await stream(THOUGHT, (d) => onThinking?.(d), req.signal)
+      }
+      await sleep(500, req.signal) // let the spinner and frog show
+      if (!req.tools.length) {
+        await stream(CHAT, onText, req.signal)
+        return { text: CHAT, thinking: THOUGHT, usage, toolCalls: [] }
+      }
+      if (last?.role === 'user') {
         await stream(INTRO, onText, req.signal)
-        return { text: INTRO, usage, toolCalls: [{ id: 'demo1', name: 'list_files', args: {} }] }
+        return { text: INTRO, thinking: THOUGHT, usage, toolCalls: [{ id: 'demo1', name: 'list_files', args: {} }] }
       }
       const wrote = req.messages.some((m, i) => m.role === 'tool' && m.name === 'write_file' && i > lastUser(req))
       if (!wrote) {

@@ -42,3 +42,48 @@ export async function checkProfile(profile: Profile): Promise<ProfileCheck> {
     return { model: profile.model }
   }
 }
+
+export interface ModelInfo {
+  id: string
+  /** Friendly name when the provider gives one. */
+  name?: string
+}
+
+/** The chat models this key can use, newest first where the provider says so. */
+export async function listModels(profile: Profile): Promise<{ models: ModelInfo[]; error?: string }> {
+  const key = resolveApiKey(profile)
+  const signal = AbortSignal.timeout(8000)
+  try {
+    if (profile.type === 'anthropic') {
+      const base = (profile.baseUrl ?? DEFAULT_BASE_URLS.anthropic).replace(/\/+$/, '')
+      const res = await fetch(`${base}/v1/models?limit=100`, { headers: { 'x-api-key': key ?? '', 'anthropic-version': '2023-06-01' }, signal })
+      if (!res.ok) return { models: [], error: res.status === 401 ? 'That key was rejected.' : `The provider answered ${res.status}.` }
+      const data = ((await res.json()) as any).data ?? []
+      return { models: data.map((m: any) => ({ id: m.id, name: m.display_name })) }
+    }
+    if (profile.type === 'gemini') {
+      const base = (profile.baseUrl ?? DEFAULT_BASE_URLS.gemini).replace(/\/+$/, '')
+      const res = await fetch(`${base}/v1beta/models?pageSize=200`, { headers: { 'x-goog-api-key': key ?? '' }, signal })
+      if (!res.ok) return { models: [], error: [400, 401, 403].includes(res.status) ? 'That key was rejected.' : `The provider answered ${res.status}.` }
+      const data = ((await res.json()) as any).models ?? []
+      return {
+        models: data
+          .filter((m: any) => (m.supportedGenerationMethods ?? []).includes('generateContent') && !NOT_CHAT.test(m.name))
+          .map((m: any) => ({ id: String(m.name).replace(/^models\//, ''), name: m.displayName })),
+      }
+    }
+    const base = (profile.baseUrl ?? DEFAULT_BASE_URLS.openai).replace(/\/+$/, '')
+    const res = await fetch(`${base}/models`, { headers: key ? { authorization: `Bearer ${key}` } : {}, signal })
+    if (!res.ok) return { models: [], error: res.status === 401 ? 'That key was rejected.' : `The provider answered ${res.status}.` }
+    const json: any = await res.json()
+    const data: any[] = json.data ?? json.models ?? []
+    return {
+      models: data
+        .filter((m) => !NOT_CHAT.test(m.id ?? m.name ?? ''))
+        .sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || String(a.id).localeCompare(String(b.id)))
+        .map((m) => ({ id: m.id ?? m.name, name: m.name && m.name !== m.id ? m.name : undefined })),
+    }
+  } catch {
+    return { models: [], error: "Couldn't reach the provider." }
+  }
+}

@@ -54,7 +54,7 @@ describe('agent loop (mock OpenAI-compatible server)', () => {
       system: 's',
       messages,
       cwd,
-      permissions: new Permissions(yolo),
+      permissions: new Permissions(yolo ? 'bypass' : 'manual'),
       signal: new AbortController().signal,
       hooks: {
         onThinking() {},
@@ -118,7 +118,7 @@ describe('demo provider', () => {
       system: 's',
       messages,
       cwd,
-      permissions: new Permissions(true),
+      permissions: new Permissions('bypass'),
       signal: new AbortController().signal,
       hooks: { onThinking() {}, onText: (d) => (text += d), onTextEnd() {}, onToolRunning() {}, onToolDone() {}, confirm: async () => 'y', onUsage() {} },
     })

@@ -26,7 +26,7 @@ export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function defaultConfig(): Config {
-  return { activeProfile: '', profiles: {}, pet: true, animations: true }
+  return { activeProfile: '', profiles: {}, pet: true, animations: true, permissionMode: 'auto' }
 }
 
 /** Returns null when no config file exists. Throws a readable error if it is malformed. */
@@ -46,6 +46,7 @@ export function loadConfig(file = configPath()): Config | null {
   }
   const cfg = { ...defaultConfig(), ...data } as Config
   if (!cfg.profiles || typeof cfg.profiles !== 'object') cfg.profiles = {}
+  if (!['manual', 'auto', 'bypass'].includes(cfg.permissionMode)) cfg.permissionMode = 'auto'
   for (const [name, p] of Object.entries(cfg.profiles)) {
     if (!p || !['openai', 'anthropic', 'gemini'].includes(p.type) || !p.model) {
       throw new Error(`Profile "${name}" in ${file} needs a valid "type" and "model".`)

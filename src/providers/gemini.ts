@@ -28,7 +28,7 @@ export function toGeminiContents(messages: Msg[]) {
 export function geminiProvider(profile: Profile, apiKey?: string): Provider {
   const base = (profile.baseUrl || DEFAULT_BASE_URLS.gemini).replace(/\/+$/, '')
   return {
-    async chat(req: ChatRequest, onText): Promise<ChatResult> {
+    async chat(req: ChatRequest, onText, onThinking): Promise<ChatResult> {
       const body: any = {
         systemInstruction: { parts: [{ text: req.system }] },
         contents: toGeminiContents(req.messages),
@@ -38,9 +38,21 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
       }
       const model = profile.model.replace(/^models\//, '')
       // The key goes in a header, never the URL, so it cannot leak into logs.
-      const res = await postJson(`${base}/v1beta/models/${model}:streamGenerateContent?alt=sse`, { 'x-goog-api-key': apiKey ?? '' }, body, req.signal)
+      const url = `${base}/v1beta/models/${model}:streamGenerateContent?alt=sse`
+      const headers = { 'x-goog-api-key': apiKey ?? '' }
+      body.generationConfig = { thinkingConfig: { includeThoughts: true } }
+      let res: Response
+      try {
+        res = await postJson(url, headers, body, req.signal)
+      } catch (e: any) {
+        // Models without thinking support reject the config: retry plain.
+        if (!/thinking|thought/i.test(e?.message ?? '')) throw e
+        delete body.generationConfig
+        res = await postJson(url, headers, body, req.signal)
+      }
 
       let text = ''
+      let thinking = ''
       const toolCalls: ToolCall[] = []
       const usage = { input: 0, output: 0 }
       for await (const data of sseData(res)) {
@@ -55,7 +67,13 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
           usage.output = chunk.usageMetadata.candidatesTokenCount ?? usage.output
         }
         for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
-          if (part.thought) continue
+          if (part.thought) {
+            if (part.text) {
+              thinking += part.text
+              onThinking?.(part.text)
+            }
+            continue
+          }
           if (part.text) {
             text += part.text
             onText(part.text)
@@ -70,7 +88,7 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
           }
         }
       }
-      return { text, toolCalls, usage }
+      return { text, thinking, toolCalls, usage }
     },
   }
 }
