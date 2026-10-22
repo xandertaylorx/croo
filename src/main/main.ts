@@ -242,12 +242,14 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
   const active = activeProfile()
   session.profile = active?.[0] ?? 'demo'
 
+  const identity = demo || !active ? undefined : { model: active[1].model, provider: active[0] }
+
   const run = async () => {
     try {
       const provider = demo ? demoProvider() : createProvider(active![1])
       await runTurn({
         provider,
-        system: plain ? buildChatPrompt() : buildSystemPrompt(session.cwd),
+        system: plain ? buildChatPrompt(new Date(), identity) : buildSystemPrompt(session.cwd, new Date(), identity),
         messages,
         cwd: session.cwd,
         permissions: rt.permissions,

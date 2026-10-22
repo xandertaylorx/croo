@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { anthropicProvider, toAnthropicMessages } from '../src/providers/anthropic.js'
 import { openaiProvider } from '../src/providers/openai.js'
-import { INSTRUCTION_FILES, INIT_PROMPT, buildSystemPrompt, instructionFiles, loadProjectInstructions } from '../src/prompt.js'
+import { INSTRUCTION_FILES, INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, loadProjectInstructions } from '../src/prompt.js'
 import { toItems } from '../src/transcript.js'
 import { clampEffort, claudeThinking, effortLevels, parseClaude, thinkingBudget } from '../src/effort.js'
 
@@ -191,6 +191,18 @@ describe('reasoning settings per model', () => {
     const before = bodies.length
     expect((await chat('gpt-5-reject')).text).toBe('Answer')
     expect(bodies.slice(before).map((b) => b.reasoning_effort)).toEqual(['high', undefined])
+  })
+})
+
+describe('system prompts', () => {
+  it('tell the model which model it really is, so it does not guess', () => {
+    const who = { model: 'qwen2.5-coder:3b', provider: 'ollama' }
+    for (const prompt of [buildChatPrompt(new Date(), who), buildSystemPrompt(os.tmpdir(), new Date(), who)]) {
+      expect(prompt).toContain('qwen2.5-coder:3b')
+      expect(prompt).toContain('do not claim to be GPT')
+      expect(prompt).toContain('Formatting')
+    }
+    expect(buildChatPrompt()).not.toContain('underlying language model')
   })
 })
 

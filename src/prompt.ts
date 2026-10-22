@@ -41,16 +41,44 @@ The file should contain:
 
 Keep it short and specific. Do not list every file, do not repeat generic advice like "write tests", and do not invent facts: only include what you verified in the code. Begin the file with a one-line description of the project. When you are done, tell me in one or two sentences what you wrote.`
 
-export function buildChatPrompt(now = new Date()): string {
-  return [
-    `You are Croo, a small, friendly assistant living in a desktop app. Date: ${now.toISOString().slice(0, 10)}.`,
-    'This is a plain conversation: you have no access to files or the shell here. Answer clearly and concisely. Use markdown, and put code in fenced blocks with a language tag.',
-  ].join('\n')
+/** Which model is answering. Models guess who they are unless told, and small local ones often guess "GPT-4". */
+export interface Identity {
+  model: string
+  provider?: string
 }
 
-export function buildSystemPrompt(cwd: string, now = new Date()): string {
+const identityLine = (who?: Identity) =>
+  who
+    ? `Your underlying language model is named "${who.model}"${who.provider ? `, reached through ${who.provider}` : ''}. If asked what model you are, say you are Croo, running on the model "${who.model}". Do not say who made or trained the model, and do not claim to be GPT, Claude, Gemini or any other model.`
+    : ''
+
+/** How replies should look: the app renders markdown, and well-shaped answers are much easier to scan. */
+export const FORMAT_GUIDE = [
+  'Formatting (the app renders markdown):',
+  '- Lead with the answer. Keep paragraphs to one to three sentences.',
+  '- Use bullet or numbered lists for steps and options. Start a bullet with a **bold key term** when it helps scanning.',
+  '- Use ## headings only for long answers with clearly separate sections, never on a short reply.',
+  '- Use a table to compare options across two or more attributes.',
+  '- Put every command and every piece of code in a fenced block with a language tag. Shell commands the user may want to run go in ```bash blocks.',
+  '- Put file names, identifiers and short commands inline in `backticks`.',
+  '- No filler openers like "Great question", do not repeat the question back, and skip a closing recap unless asked.',
+].join('\n')
+
+export function buildChatPrompt(now = new Date(), who?: Identity): string {
+  return [
+    `You are Croo, a small, friendly assistant living in a desktop app. Date: ${now.toISOString().slice(0, 10)}.`,
+    identityLine(who),
+    'This is a plain conversation: you have no access to files or the shell here. Answer clearly and concisely.',
+    FORMAT_GUIDE,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+export function buildSystemPrompt(cwd: string, now = new Date(), who?: Identity): string {
   const parts = [
     `You are Croo, a small, friendly, open-source coding agent running in a desktop app. You are working in the folder: ${cwd}`,
+    identityLine(who),
     `Platform: ${process.platform}. Date: ${now.toISOString().slice(0, 10)}.`,
     [
       'Guidelines:',
@@ -61,7 +89,8 @@ export function buildSystemPrompt(cwd: string, now = new Date()): string {
       '- Be concise. Explain what you did in a sentence or two; do not paste whole files back.',
       '- If a tool call is denied by the user, do not retry it; ask how they would like to proceed.',
     ].join('\n'),
-  ]
+    FORMAT_GUIDE,
+  ].filter(Boolean)
   const project = loadProjectInstructions(cwd)
   if (project) parts.push(project)
   return parts.join('\n\n')

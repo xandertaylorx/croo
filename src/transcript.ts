@@ -13,8 +13,8 @@ type UserMsg = Extract<Msg, { role: 'user' }>
 
 export function viewAttachments(m: UserMsg): AttachmentView[] | undefined {
   const out: AttachmentView[] = [
-    ...(m.images ?? []).map((i) => ({ name: i.name, kind: 'image' as const, dataUrl: `data:${i.mime};base64,${i.data}` })),
-    ...(m.attached ?? []).map((f) => ({ name: f.name, kind: 'file' as const })),
+    ...(m.images ?? []).map((i) => ({ name: i.name, kind: 'image' as const, dataUrl: `data:${i.mime};base64,${i.data}`, size: Math.round((i.data.length * 3) / 4) })),
+    ...(m.attached ?? []).map((f) => ({ name: f.name, kind: 'file' as const, size: Buffer.byteLength(f.text) })),
   ]
   return out.length ? out : undefined
 }

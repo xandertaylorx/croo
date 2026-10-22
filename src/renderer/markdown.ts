@@ -16,6 +16,8 @@ function inline(raw: string): string {
         .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
         .replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![*\w])/g, '$1<em>$2</em>')
         .replace(/(^|[^_\w])_([^_\s][^_\n]*?)_(?![_\w])/g, '$1<em>$2</em>')
+        // Bare web addresses become links (the ones already inside an href follow a quote, so they are not matched).
+        .replace(/(^|[\s(])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>')
     })
     .join('')
 }
@@ -115,12 +117,14 @@ function renderList(items: { indent: number; ordered: boolean; text: string }[])
   for (const it of items) {
     while (stack.length && it.indent < stack[stack.length - 1].indent) html += `</li></${stack.pop()!.tag}>`
     const top = stack[stack.length - 1]
+    const task = it.text.match(/^\[( |x|X)\]\s+(.*)$/)
+    const open = task ? `<li class="task${task[1] === ' ' ? '' : ' done'}"><span class="box" aria-hidden="true"></span>` : '<li>'
     if (!top || it.indent > top.indent) {
       const tag = it.ordered ? 'ol' : 'ul'
-      html += `<${tag}><li>`
+      html += `<${tag}>${open}`
       stack.push({ indent: it.indent, tag })
-    } else html += '</li><li>'
-    html += inline(it.text)
+    } else html += `</li>${open}`
+    html += inline(task ? task[2] : it.text)
   }
   while (stack.length) html += `</li></${stack.pop()!.tag}>`
   return html

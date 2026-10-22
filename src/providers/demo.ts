@@ -23,6 +23,17 @@ console.log(frog)
 npm test && git status
 \`\`\`
 
+| Mode | What it does |
+| --- | --- |
+| **Manual** | Asks before everything |
+| **Auto** | Asks only when it matters |
+| **Bypass** | Never asks |
+
+- [x] Read the project
+- [ ] Try the permission prompt
+
+> Tip: type \`@\` in the message box to mention a file.
+
 Let me look around, then propose a file so you can try the permission prompt.
 `
 

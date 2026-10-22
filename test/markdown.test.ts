@@ -23,6 +23,16 @@ describe('renderMarkdown', () => {
   })
 })
 
+describe('richer markdown', () => {
+  it('renders task lists and turns bare URLs into links', () => {
+    const html = renderMarkdown('- [x] done\n- [ ] todo')
+    expect(html).toContain('<li class="task done">')
+    expect(html).toContain('<li class="task">')
+    expect(renderMarkdown('see https://example.com/a?b=1, ok')).toContain('<a href="https://example.com/a?b=1"')
+    expect(renderMarkdown('[text](https://example.com)')).toBe('<p><a href="https://example.com" target="_blank" rel="noreferrer">text</a></p>')
+  })
+})
+
 describe('highlightLines', () => {
   it('splits into lines with balanced tags, even across a block comment', () => {
     const lines = highlightLines('/* one\ntwo */\nconst a = 1', 'ts')

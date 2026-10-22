@@ -18,6 +18,8 @@ export interface AttachmentView {
   kind: 'image' | 'file'
   /** Images only: a data: URL to show. */
   dataUrl?: string
+  /** Bytes, for the little "2 KB" label. */
+  size?: number
 }
 
 export type Item =

@@ -85,7 +85,12 @@ function renderItem(item: Item): HTMLElement {
     case 'user':
       return renderUser(item)
     case 'assistant':
-      return h('div', { class: 'msg assistant md', html: renderMarkdown(item.text) })
+      return h(
+        'div',
+        { class: 'msg assistant' },
+        h('div', { class: 'md', html: renderMarkdown(item.text) }),
+        h('div', { class: 'msg-foot' }, h('button', { class: 'icon-btn small copy-reply', type: 'button', title: 'Copy reply', onClick: (e: Event) => copyReply(e.currentTarget as HTMLElement, item.text) }, icon('copy', 13))),
+      )
     case 'thinking':
       return renderThinking(item)
     case 'error':
@@ -97,8 +102,52 @@ function renderItem(item: Item): HTMLElement {
   }
 }
 
-const attView = (a: AttachmentView) =>
-  a.kind === 'image' && a.dataUrl ? h('img', { class: 'att-img', src: a.dataUrl, alt: a.name, title: a.name }) : h('span', { class: 'att-file' }, icon('file', 12), a.name)
+const fmtSize = (n?: number) => (n === undefined ? '' : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
+const extOf = (name: string) => (name.includes('.') ? name.split('.').pop()!.toLowerCase() : '')
+
+/** A sent attachment: images as thumbnails you can open, files as small cards with their type and size. */
+function attCard(a: AttachmentView): HTMLElement {
+  if (a.kind === 'image' && a.dataUrl) {
+    return h('button', { class: 'att-card image', type: 'button', title: a.name, onClick: () => openLightbox(a) }, h('img', { src: a.dataUrl, alt: a.name }), h('span', { class: 'att-cap' }, a.name))
+  }
+  const ext = extOf(a.name)
+  let hue = 0
+  for (const ch of ext) hue = (hue * 31 + ch.charCodeAt(0)) % 360
+  return h(
+    'div',
+    { class: 'att-card file', title: a.name },
+    h('span', { class: 'ext', style: `--hue:${hue}` }, (ext || 'file').slice(0, 4)),
+    h('span', { class: 'att-meta' }, h('b', null, a.name), h('small', null, [extOf(a.name).toUpperCase() || 'File', fmtSize(a.size)].filter(Boolean).join(' · '))),
+  )
+}
+
+function openLightbox(a: AttachmentView) {
+  const close = () => (box.remove(), document.removeEventListener('keydown', onKey, true))
+  const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), close())
+  const box = h('div', { class: 'lightbox', onClick: close }, h('img', { src: a.dataUrl, alt: a.name }), h('span', null, `${a.name}${a.size ? ` · ${fmtSize(a.size)}` : ''}`))
+  document.getElementById('modal-root')!.append(box)
+  document.addEventListener('keydown', onKey, true)
+}
+
+/** The typed text, with @file mentions drawn as small file chips. */
+function userText(text: string): (string | Node)[] {
+  const out: (string | Node)[] = []
+  let last = 0
+  for (const mt of text.matchAll(/(^|\s)@([\w./-]*[./][\w./-]*)/g)) {
+    const start = (mt.index ?? 0) + mt[1].length
+    out.push(text.slice(last, start), h('span', { class: 'mention', title: mt[2] }, icon('file', 12), mt[2]))
+    last = start + 1 + mt[2].length
+  }
+  out.push(text.slice(last))
+  return out
+}
+
+function copyReply(btn: HTMLElement, text: string) {
+  void navigator.clipboard.writeText(text).then(() => {
+    btn.replaceChildren(icon('check', 13))
+    setTimeout(() => btn.replaceChildren(icon('copy', 13)), 1200)
+  })
+}
 
 function renderUser(item: Extract<Item, { kind: 'user' }>): HTMLElement {
   const atts = item.attachments ?? []
@@ -106,7 +155,8 @@ function renderUser(item: Extract<Item, { kind: 'user' }>): HTMLElement {
     'div',
     { class: 'msg user' },
     h('div', { class: 'msg-actions' }, h('button', { class: 'icon-btn small', type: 'button', title: 'Edit and resend', onClick: () => startEdit(item) }, icon('pencil', 13))),
-    h('div', { class: 'bubble' }, atts.length ? h('div', { class: 'bubble-atts' }, atts.map(attView)) : null, item.text),
+    atts.length ? h('div', { class: 'att-cards' }, atts.map(attCard)) : null,
+    item.text ? h('div', { class: 'bubble' }, ...userText(item.text)) : null,
   )
 }
 
@@ -130,7 +180,7 @@ function startEdit(item: Extract<Item, { kind: 'user' }>) {
     h(
       'div',
       { class: 'edit-box' },
-      item.attachments?.length ? h('div', { class: 'bubble-atts' }, item.attachments.map(attView)) : null,
+      item.attachments?.length ? h('div', { class: 'att-cards' }, item.attachments.map(attCard)) : null,
       area,
       h('div', { class: 'edit-foot' }, h('small', null, 'Replaces everything after this message. Changes already made to files stay.'), h('span', { class: 'push-right' }), h('button', { class: 'btn ghost small', type: 'button', onClick: () => touch(item) }, 'Cancel'), h('button', { class: 'btn primary small', type: 'button', onClick: go }, 'Resend')),
     ),
@@ -436,7 +486,10 @@ function touchText(item: Item) {
     raf = 0
     for (const it of dirty) {
       const el = m?.els.get(it)
-      if (el && it.kind === 'assistant') (el.innerHTML = renderMarkdown(it.text), m && restoreRuns(el, m.view.id))
+      if (el && it.kind === 'assistant') {
+        const md = el.querySelector('.md')
+        if (md) (md.innerHTML = renderMarkdown(it.text), m && restoreRuns(md, m.view.id))
+      }
       else if (el && it.kind === 'thinking') touch(it)
     }
     dirty.clear()
@@ -567,7 +620,7 @@ function closeOpenConfirms(v: ChatView) {
 
 // ---------- the pane ----------
 
-const toView = (a: Attachment): AttachmentView => ({ name: a.name, kind: a.kind, dataUrl: a.kind === 'image' ? a.dataUrl : undefined })
+const toView = (a: Attachment): AttachmentView => ({ name: a.name, kind: a.kind, dataUrl: a.kind === 'image' ? a.dataUrl : undefined, size: a.kind === 'image' ? Math.round(((a.dataUrl?.length ?? 0) * 3) / 4) : new Blob([a.text ?? '']).size })
 
 async function sendMessage(v: ChatView, text: string, atts: Attachment[]) {
   if (m) m.stick = true
