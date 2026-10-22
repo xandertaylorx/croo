@@ -27,6 +27,8 @@ export interface ChatView {
   streamed?: number
   /** Files and images waiting in the message box. */
   attachments?: Attachment[]
+  /** Messages typed while the agent was busy; each is sent when the one before it finishes. */
+  queue?: { text: string; atts: Attachment[] }[]
 }
 
 export const store = {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0
+
+- **Queue messages**: while the agent is working, type your next message and press ↵ or ⌘↵ to line it up; it sends when the current task finishes. Queued messages show above the box (✕ to remove); Stop returns when the box is empty, and stopping clears the queue
+- **Faster voice**: transcription runs through a warm Whisper server that starts as soon as you begin speaking, so text appears in a fraction of a second instead of waiting for the model to load. The first use after installing still takes a few seconds while macOS prepares the GPU
+- **Code blocks keep their Copy / Run header in view** while you scroll a long block
+
 ## 0.12.2
 
 - Small models that write a tool call out as text (`{"name":"bash",...}`, a fenced block or a `<tool_call>` tag) instead of using the tool channel now work: Croo recognises the call for the tools it offered and runs it through the usual approval step. The agent is also told to act with tools rather than print commands for you to run

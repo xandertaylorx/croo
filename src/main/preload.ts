@@ -21,6 +21,7 @@ const api: CrooApi = {
   setMemory: (on) => invoke('memory:set', on),
   removeMemory: (i) => invoke('memory:remove', i),
   clearMemory: () => invoke('memory:clear'),
+  warmVoice: () => invoke('voice:warm'),
   downloadVoice: () => invoke('voice:download'),
   micAccess: () => invoke('voice:mic'),
   transcribe: (wav) => invoke('voice:transcribe', wav),

@@ -185,6 +185,7 @@ export function voiceControls(input: HTMLTextAreaElement, say: (text: string) =>
     try {
       set(true)
       time.textContent = '0:00'
+      void croo.warmVoice()
       rec = await startRecording(canvas, (s) => (time.textContent = clock(s)))
     } catch {
       set(false)

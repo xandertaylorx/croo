@@ -15,7 +15,7 @@ import { demoProvider } from '../providers/demo.js'
 import { fixPath } from './shellenv.js'
 import { LOCAL_MODELS, VOICE_MODEL, localModel } from '../localmodels.js'
 import { commitPrompt, cleanCommitMessage, COMMIT_SYSTEM } from '../commitmsg.js'
-import { initVoice, transcribe, voiceEngineInstalled } from './voice.js'
+import { initVoice, stopVoice, transcribe, voiceEngineInstalled, warmVoice } from './voice.js'
 import { cancelDownload, deleteModel, downloadState, engineInstalled, ensureEngine, initLocal, isReady, startDownload, stopEngine, touchEngine } from './local.js'
 import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
@@ -566,6 +566,7 @@ function registerIpc() {
     const l = localModel(id)
     if (l && LOCAL_MODELS.includes(l)) void startDownload(l, (done) => useLocalModel(done.id))
   })
+  ipcMain.handle('voice:warm', () => warmVoice())
   ipcMain.handle('voice:download', () => void startDownload(VOICE_MODEL, () => {}))
   ipcMain.handle('voice:mic', async () => {
     if (process.platform !== 'darwin') return true
@@ -892,6 +893,7 @@ else {
   })
   app.on('before-quit', () => {
     stopEngine()
+    stopVoice()
     for (const rt of runtimes.values()) stopChat(rt)
     terminals.killAll()
     runner.stopAll()

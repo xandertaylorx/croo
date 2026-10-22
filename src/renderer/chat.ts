@@ -46,6 +46,7 @@ interface Mounted {
   chip: HTMLButtonElement
   effort: HTMLButtonElement
   tray: HTMLElement
+  queue: HTMLElement
   hero: HTMLElement | null
   stick: boolean
 }
@@ -535,16 +536,46 @@ function paintStatus() {
     frog.set(v.note.startsWith('Stopped') ? 'idle' : v.note.startsWith('Something') ? 'oops' : 'happy')
     status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)), h('button', { class: 'status-btn', type: 'button', title: 'Retry', onClick: () => void retryLast() }, icon('refresh', 12), 'Retry'))
   }
-  m.send.replaceChildren(icon(running(v) ? 'stop' : 'arrowUp', running(v) ? 16 : 18))
-  m.send.classList.toggle('stop', running(v))
-  m.send.title = running(v) ? 'Stop' : 'Send'
   syncSend()
   follow()
 }
 
 function syncSend() {
   if (!m) return
-  m.send.disabled = !running(m.view) && !m.input.value.trim() && !(m.view.attachments?.length)
+  const busy = running(m.view)
+  const typed = !!m.input.value.trim() || !!m.view.attachments?.length
+  // While the agent works, typing turns Stop into "queue this message".
+  const stop = busy && !typed
+  m.send.replaceChildren(icon(stop ? 'stop' : 'arrowUp', stop ? 16 : 18))
+  m.send.classList.toggle('stop', stop)
+  m.send.title = stop ? 'Stop' : busy ? 'Queue (↵ or ⌘↵)' : 'Send'
+  m.send.disabled = !busy && !typed
+  m.input.placeholder = busy ? 'Queue a message, it sends when this finishes…' : (m.input.dataset.ph ?? m.input.placeholder)
+}
+
+function paintQueue() {
+  if (!m) return
+  const v = m.view
+  const q = v.queue ?? []
+  m.queue.hidden = !q.length
+  m.queue.replaceChildren(
+    ...q.map((item, i) =>
+      h(
+        'div',
+        { class: 'queued', title: item.text },
+        icon('arrowUp', 12),
+        h('span', { class: 'queued-text' }, item.text),
+        h('button', { class: 'queued-x', type: 'button', title: 'Remove from queue', onClick: () => (q.splice(i, 1), paintQueue()) }, icon('x', 11)),
+      ),
+    ),
+  )
+}
+
+/** The agent finished: send the next queued message, if any. */
+function flushQueue(v: ChatView) {
+  const next = v.queue?.shift()
+  if (m?.view === v) paintQueue()
+  if (next) setTimeout(() => void sendMessage(v, next.text, next.atts), 0)
 }
 
 export function handleEvent(ev: ChatEvent) {
@@ -612,13 +643,18 @@ export function handleEvent(ev: ChatEvent) {
       void refreshGit()
       endThinking(v)
       setStatus(v, 'idle', '', ev.seconds >= 1 ? `Done in ${ev.seconds.toFixed(1)}s` : 'Done')
+      flushQueue(v)
       break
     case 'cancelled':
+      v.queue = []
+      if (m?.view === v) paintQueue()
       endThinking(v)
       closeOpenConfirms(v)
       setStatus(v, 'idle', '', 'Stopped')
       break
     case 'error':
+      v.queue = []
+      if (m?.view === v) paintQueue()
       endThinking(v)
       closeOpenConfirms(v)
       push(v, { kind: 'error', text: ev.message })
@@ -654,7 +690,6 @@ async function sendMessage(v: ChatView, text: string, atts: Attachment[]) {
 async function submit() {
   if (!m) return
   const { view: v, input } = m
-  if (running(v)) return
   const atts = v.attachments ?? []
   const text = input.value.trim() || (atts.length ? 'See what I attached.' : '')
   if (!text) return
@@ -664,6 +699,13 @@ async function submit() {
   closeMention()
   paintTray()
   autosize()
+  if (running(v)) {
+    // Busy: line it up behind the current turn.
+    ;(v.queue ??= []).push({ text, atts })
+    paintQueue()
+    syncSend()
+    return
+  }
   await sendMessage(v, text, atts)
 }
 
@@ -820,9 +862,10 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const scroll = h('div', { class: 'scroll' }, thread)
   const status = h('div', { class: 'status' })
   const input = h('textarea', { class: 'input-area', rows: 1, placeholder: plain ? 'Message Croo…' : `Ask Croo about ${folder?.name ?? 'this folder'}…`, spellcheck: 'true' })
+  input.dataset.ph = input.placeholder
   const voice = voiceControls(input, (t) => setStatus(view, 'idle', '', t))
   voiceRefresh = voice.refresh
-  const send = h('button', { class: 'send', type: 'button', onClick: () => (running(view) ? void croo.stop(view.id) : void submit()) })
+  const send = h('button', { class: 'send', type: 'button', onClick: () => (running(view) && !input.value.trim() && !view.attachments?.length ? void croo.stop(view.id) : void submit()) })
   const frog = new Frog(42)
 
   const mode = h('button', { class: 'mode no-drag', type: 'button', onClick: () => toggleModeMenu() })
@@ -830,7 +873,8 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const effort = h('button', { class: 'effort no-drag', type: 'button', onClick: () => toggleEffortMenu() })
   const composerWrap = h('div', { class: 'composer-wrap' })
   const tray = h('div', { class: 'attach-tray', hidden: true })
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, hero: null, stick: true }
+  const queue = h('div', { class: 'queue', hidden: true })
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, hero: null, stick: true }
   const mounted = m
 
   input.value = view.draft
@@ -942,6 +986,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
     ),
   )
   composerWrap.append(
+    queue,
     h('div', { class: 'composer' }, tray, input, voice.bar, h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('paperclip', 17)), voice.mic, send),
     h(
       'div',
@@ -961,6 +1006,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
     input.focus()
   }
   paintStatus()
+  paintQueue()
   refreshMode()
   paintTray()
   autosize()

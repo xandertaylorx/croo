@@ -37,9 +37,10 @@ console.log(`engine ready in ${out}`)
 
 // ---- whisper.cpp: the speech-to-text engine behind voice input (built from source, one static binary) ----
 const WHISPER_TAG = 'v1.9.5'
+const WHISPER_STAMP = `${WHISPER_TAG}+server`
 const wout = 'vendor/whisper'
 const wstamp = path.join(wout, '.tag')
-if (fs.existsSync(path.join(wout, 'whisper-cli')) && fs.existsSync(wstamp) && fs.readFileSync(wstamp, 'utf8') === WHISPER_TAG) {
+if (fs.existsSync(path.join(wout, 'whisper-server')) && fs.existsSync(wstamp) && fs.readFileSync(wstamp, 'utf8') === WHISPER_STAMP) {
   console.log(`whisper ${WHISPER_TAG} already in ${wout}`)
 } else {
   try {
@@ -47,12 +48,12 @@ if (fs.existsSync(path.join(wout, 'whisper-cli')) && fs.existsSync(wstamp) && fs
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-whisper-'))
     const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' })
     sh('git', ['clone', '--depth', '1', '--branch', WHISPER_TAG, 'https://github.com/ggml-org/whisper.cpp', work])
-    sh('cmake', ['-B', 'build', '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=OFF', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DWHISPER_BUILD_TESTS=OFF', '-DWHISPER_BUILD_SERVER=OFF'], work)
-    sh('cmake', ['--build', 'build', '-j', '--config', 'Release', '--target', 'whisper-cli'], work)
+    sh('cmake', ['-B', 'build', '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=OFF', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DWHISPER_BUILD_TESTS=OFF', '-DWHISPER_BUILD_SERVER=ON'], work)
+    sh('cmake', ['--build', 'build', '-j', '--config', 'Release', '--target', 'whisper-cli', 'whisper-server'], work)
     fs.rmSync(wout, { recursive: true, force: true })
     fs.mkdirSync(wout, { recursive: true })
-    fs.copyFileSync(path.join(work, 'build', 'bin', 'whisper-cli'), path.join(wout, 'whisper-cli'))
-    fs.writeFileSync(wstamp, WHISPER_TAG)
+    for (const b of ['whisper-cli', 'whisper-server']) fs.copyFileSync(path.join(work, 'build', 'bin', b), path.join(wout, b))
+    fs.writeFileSync(wstamp, WHISPER_STAMP)
     fs.rmSync(work, { recursive: true, force: true })
     console.log(`whisper ready in ${wout}`)
   } catch (e) {

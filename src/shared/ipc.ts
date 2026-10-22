@@ -255,6 +255,8 @@ export interface CrooApi {
   removeMemory(index: number): Promise<void>
   clearMemory(): Promise<void>
   downloadVoice(): Promise<void>
+  /** Get the speech engine ready while the user is still talking. */
+  warmVoice(): Promise<void>
   /** Ask macOS for the microphone; false when it was refused. */
   micAccess(): Promise<boolean>
   /** 16 kHz mono WAV in, text out. */

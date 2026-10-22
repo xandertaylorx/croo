@@ -1016,9 +1016,15 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--bg-soft);
-  overflow: hidden;
+  /* clip, not hidden: hidden would stop the header from sticking while you scroll a long block */
+  overflow: clip;
 }
 .code-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-soft);
+  border-radius: 10px 10px 0 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3713,4 +3719,52 @@ button.inst:hover {
   margin: 14px 0 10px;
   color: var(--text-3);
   font-size: 12.5px;
+}
+
+/* ---------- queued messages ---------- */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 6px 8px;
+}
+.queue[hidden] {
+  display: none;
+}
+.queued {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 6px 5px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.queued .icon {
+  flex: none;
+  color: var(--text-3);
+}
+.queued-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queued-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+}
+.queued-x:hover {
+  background: var(--hover);
+  color: var(--text);
 }
