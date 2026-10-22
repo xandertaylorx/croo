@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.0
+
+- **Quieter, more minimal look**: warm neutral greys in place of the green tint, with green kept for the frog and for success. Buttons, the send button and selected options use plain ink instead of green, corners are tighter, the message box is flat with a hairline border, and the soft glows are gone
+- Section labels are in sentence case instead of all caps, headings and labels use lighter weights, and user messages sit in a plain rounded block
+- Links, inline code, quotes and @mentions are neutral instead of green; menus and dialogs have tighter corners and no blurred backdrop
+
 ## 0.13.0
 
 - **Queue messages**: while the agent is working, type your next message and press ↵ or ⌘↵ to line it up; it sends when the current task finishes. Queued messages show above the box (✕ to remove); Stop returns when the box is empty, and stopping clears the queue
