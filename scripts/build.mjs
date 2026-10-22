@@ -15,6 +15,9 @@ const targets = [
 function copyStatic() {
   fs.mkdirSync('dist/renderer', { recursive: true })
   fs.copyFileSync('node_modules/@xterm/xterm/css/xterm.css', 'dist/renderer/xterm.css')
+  fs.copyFileSync('node_modules/katex/dist/katex.min.css', 'dist/renderer/katex.min.css')
+  fs.mkdirSync('dist/renderer/fonts', { recursive: true })
+  for (const f of fs.readdirSync('node_modules/katex/dist/fonts')) if (f.endsWith('.woff2')) fs.copyFileSync(`node_modules/katex/dist/fonts/${f}`, `dist/renderer/fonts/${f}`)
   for (const f of ['index.html', 'styles.css']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`)
 }
 

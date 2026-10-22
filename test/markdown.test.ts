@@ -45,3 +45,17 @@ describe('highlightLines', () => {
     expect(highlightLines('a < b\n\nc', 'nope')).toEqual(['a &lt; b', '', 'c'])
   })
 })
+
+describe('math', () => {
+  it('renders $$…$$, \\[…\\] and inline $…$ with KaTeX and leaves prices alone', () => {
+    expect(renderMarkdown('Area: $$ \\frac{a}{b} + x_1 $$ done')).toContain('katex')
+    expect(renderMarkdown('so \\(E = mc^2\\) holds')).toContain('katex')
+    expect(renderMarkdown('inline $a_1 + b_2$ here')).toContain('katex')
+    const price = renderMarkdown('It costs $5 and $10 total')
+    expect(price).not.toContain('katex')
+    expect(price).toContain('$5 and $10')
+  })
+  it('does not let markdown touch the formulas', () => {
+    expect(renderMarkdown('$$ a_b * c_d $$')).not.toContain('<em>')
+  })
+})

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.1
+
+- **Math renders**: LaTeX in replies (`$x^2$`, `$$…$$`, `\(…\)`, `\[…\]`) is typeset with KaTeX instead of showing raw `$$` and backslashes; prices like `$5 and $10` are left alone
+- The agent no longer refuses a plain "delete these files" request; risky commands still ask for your approval first
+
 ## 0.12.0
 
 - **Voice input**: a mic button in the message box. While you speak a live waveform scrolls by; press ✓ (or Return) and your words are typed in. Speech is turned into text on your Mac with Whisper (built in, 57 MB voice model downloaded the first time, nothing uploaded). Esc cancels
