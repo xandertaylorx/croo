@@ -370,6 +370,35 @@ html:not([data-platform='darwin']) .chat-head {
   margin-left: auto;
   margin-right: -8px;
 }
+.context-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  cursor: default;
+}
+.context-ring[hidden] {
+  display: none;
+}
+.context-ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+.context-ring .ring-track {
+  stroke: var(--line);
+}
+.context-ring .ring-fill {
+  stroke: var(--text-2);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease;
+}
+.context-ring.warn .ring-fill {
+  stroke: var(--warn);
+}
+.context-ring.full .ring-fill {
+  stroke: var(--danger);
+}
 .show-when-hidden {
   display: none;
 }
@@ -2758,6 +2787,37 @@ button.inst:hover {
   flex: none;
   width: 58px;
   color: var(--text-3);
+}
+.mcp-input {
+  width: 100%;
+  height: auto;
+  min-height: 112px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mcp-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.mcp-add .input {
+  flex: 1;
+}
+.mcp-tools {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.pill.mcp-connecting,
+.pill.mcp-off {
+  background: var(--bg-soft);
+  color: var(--text-3);
+}
+.pill.mcp-error {
+  background: var(--del-bg);
+  color: var(--danger);
 }
 .pcard-val {
   flex: 1;

@@ -35,7 +35,7 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
         contents: toGeminiContents(req.messages),
       }
       if (req.tools.length) {
-        body.tools = [{ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }]
+        body.tools = [{ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.parameters) })) }]
       }
       const model = profile.model.replace(/^models\//, '')
       // The key goes in a header, never the URL, so it cannot leak into logs.
@@ -104,4 +104,28 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
       return { text, thinking, toolCalls, usage }
     },
   }
+}
+
+const GEMINI_KEYS = new Set(['type', 'description', 'properties', 'required', 'enum', 'items', 'nullable', 'format', 'anyOf', 'minimum', 'maximum', 'minItems', 'maxItems', 'title'])
+
+/**
+ * Gemini accepts only an OpenAPI subset of JSON Schema and rejects the rest (additionalProperties, $ref,
+ * default...). MCP servers send full schemas, so keep just the keys it understands.
+ */
+export function geminiSchema(s: any): any {
+  if (Array.isArray(s)) return s.map(geminiSchema)
+  if (!s || typeof s !== 'object') return s
+  const out: any = {}
+  for (const [k, v] of Object.entries(s)) {
+    if (!GEMINI_KEYS.has(k)) continue
+    if (k === 'properties') out.properties = Object.fromEntries(Object.entries(v as object).map(([p, ps]) => [p, geminiSchema(ps)]))
+    else if (k === 'type' && Array.isArray(v)) {
+      // ["string", "null"] → "string" + nullable
+      const t = (v as string[]).filter((x) => x !== 'null')
+      out.type = t[0] ?? 'string'
+      if (t.length < (v as string[]).length) out.nullable = true
+    } else out[k] = k === 'items' || k === 'anyOf' ? geminiSchema(v) : v
+  }
+  if (out.type === 'object' && !out.properties) out.properties = {}
+  return out
 }

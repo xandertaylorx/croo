@@ -466,5 +466,8 @@ export const rememberTool: Tool = {
 }
 
 export const TOOLS: Tool[] = [readFile, writeFile, editFile, multiEdit, listFiles, grep, bash, webFetch, todoWrite]
-export const toolByName = (name: string) => [...TOOLS, rememberTool].find((t) => t.spec.name === name)
+let extraTools: () => Tool[] = () => []
+/** Tools that come from elsewhere (MCP servers), so the chat can describe their calls too. */
+export const setExtraTools = (fn: () => Tool[]) => void (extraTools = fn)
+export const toolByName = (name: string) => [...TOOLS, rememberTool, ...extraTools()].find((t) => t.spec.name === name)
 export { Ignore }

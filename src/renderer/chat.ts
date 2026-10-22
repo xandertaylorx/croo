@@ -36,7 +36,9 @@ const TITLES: Record<string, string> = {
   multi_edit: 'Make these edits?',
   web_fetch: 'Fetch this page?',
 }
-const verb = (name: string, running: boolean): string => VERBS[name]?.[running ? 0 : 1] ?? name
+/** MCP tools are named mcp__server__tool; show them as "Called github · create_issue". */
+const mcpLabel = (name: string) => name.split('__').slice(1).join(' · ')
+const verb = (name: string, running: boolean): string => VERBS[name]?.[running ? 0 : 1] ?? (name.startsWith('mcp__') ? `${running ? 'Calling' : 'Called'} ${mcpLabel(name)}` : name)
 
 interface Mounted {
   view: ChatView
@@ -254,7 +256,7 @@ function endThinking(v: ChatView) {
 }
 
 function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
-  const [, , ic] = VERBS[item.name] ?? ['', '', 'file' as IconName]
+  const [, , ic] = VERBS[item.name] ?? ['', '', (item.name.startsWith('mcp__') ? 'plug' : 'file') as IconName]
   const state =
     item.status === 'running'
       ? h('span', { class: 'spinner' })
@@ -288,7 +290,7 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
     if (a === 'n') setStatus(v, 'thinking')
     else setStatus(v, 'working', `${verb(item.name, true)} ${item.summary}`)
   }
-  const title = TITLES[item.name] ?? 'Allow this?'
+  const title = TITLES[item.name] ?? (item.name.startsWith('mcp__') ? `Use ${mcpLabel(item.name)}?` : 'Allow this?')
   const manual = store.state.permissionMode === 'manual'
   const p = item.preview
   return h(
@@ -652,6 +654,10 @@ export function handleEvent(ev: ChatEvent) {
     case 'compacted':
       push(v, { kind: 'note', text: 'Earlier messages were summarized to free up context' })
       break
+    case 'context':
+      v.context = { used: ev.used, window: ev.window }
+      if (m?.view === v) paintRing(v)
+      break
     case 'confirm':
       endThinking(v)
       push(v, { kind: 'confirm', id: ev.id, name: ev.name, summary: ev.summary, preview: ev.preview })
@@ -866,6 +872,38 @@ export function refreshHeader() {
   if (el && title) el.textContent = title
 }
 
+const RING_R = 7
+const RING_C = 2 * Math.PI * RING_R
+/** Croo summarizes older messages at this share of the window (COMPACT_AT in compact.ts). */
+const COMPACT_SHARE = 0.8
+
+/** A small ring in the header that fills as the conversation uses up the model's context window. */
+function contextRing(v: ChatView): HTMLElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 18 18')
+  svg.setAttribute('width', '18')
+  svg.setAttribute('height', '18')
+  svg.innerHTML = `<circle class="ring-track" cx="9" cy="9" r="${RING_R}"/><circle class="ring-fill" cx="9" cy="9" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}" transform="rotate(-90 9 9)"/>`
+  const el = h('span', { class: 'context-ring no-drag', role: 'img' }, svg)
+  queueMicrotask(() => paintRing(v))
+  return el
+}
+
+function paintRing(v: ChatView) {
+  const el = document.querySelector<HTMLElement>('.chat-head .context-ring')
+  if (!el) return
+  const c = v.context
+  el.hidden = !c?.window || !c.used
+  if (!c?.window || !c.used) return
+  const share = Math.min(c.used / c.window, 1)
+  el.querySelector('.ring-fill')?.setAttribute('stroke-dashoffset', String(RING_C * (1 - share)))
+  el.classList.toggle('warn', share >= COMPACT_SHARE - 0.15 && share < COMPACT_SHARE)
+  el.classList.toggle('full', share >= COMPACT_SHARE)
+  const pct = Math.round(share * 100)
+  el.title = `Context: ${fmtTokens(c.used)} of ${fmtTokens(c.window)} tokens (${pct}%). Older messages are summarized automatically at ${COMPACT_SHARE * 100}%.`
+  el.setAttribute('aria-label', `Context ${pct}% full`)
+}
+
 export function currentChat(): ChatView | null {
   return m?.view ?? null
 }
@@ -990,6 +1028,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
         h('span', { class: 'chat-title' }, title),
         h('span', { class: 'chat-folder' }, plain ? '' : (folder?.name ?? '')),
         h('span', { class: 'push-right' }),
+        contextRing(view),
         h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Export chat as markdown', onClick: () => void exportCurrent() }, icon('share', 17)),
         ...(plain
           ? []

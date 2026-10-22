@@ -12,6 +12,8 @@ export interface Session {
   /** `chat` is a plain conversation with no folder or tools; everything else is a coding session. */
   kind?: 'chat' | 'code'
   messages: Msg[]
+  /** Tokens the last request used and the model's window, for the context ring. */
+  context?: { used: number; window: number }
 }
 
 export interface SessionMeta {

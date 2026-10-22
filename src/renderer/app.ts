@@ -20,7 +20,7 @@ async function openChat(id: string) {
   if (!view) {
     const r = await croo.openChat(id)
     if (!r) return
-    view = { id, kind: r.kind, cwd: r.cwd, items: r.items, status: 'idle', label: '', draft: '' } satisfies ChatView
+    view = { id, kind: r.kind, cwd: r.cwd, items: r.items, status: 'idle', label: '', draft: '', context: r.context } satisfies ChatView
     store.views.set(id, view)
   }
   if (view.kind !== store.mode) setMode(view.kind, false)

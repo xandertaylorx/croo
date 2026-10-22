@@ -23,15 +23,17 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 
 **Code** mode gives each project folder its own chats and lets the agent read, search, edit and run things in it. **Chat** mode is a plain conversation with no folder and no tools. You decide how much the agent may do on its own, and everything it does is visible: diffs, commands, output, reasoning, time and tokens.
 
-## What’s new in 0.14.2
+## What’s new in 0.15.0
 
-Update download and install progress now appears in the sidebar and Settings. Code blocks and command output no longer pick up extra borders. The [website](https://ai.crooli.com/) has a quieter layout, light and dark screenshots, and clearer install options. See the [changelog](CHANGELOG.md) for release history.
+Croo can now use tools from **MCP servers** (Settings → MCP), and a ring at the top right of each chat shows how full the model's context is. Long tasks keep going: older messages are summarized automatically when the context fills up, and Claude's prompt caching makes long runs much cheaper. Search uses a bundled ripgrep, and the agent gained `multi_edit`, `web_fetch` and `todo_write` tools plus a rewritten system prompt. See the [changelog](CHANGELOG.md) for details.
 
 ## Features
 
 | | |
 | --- | --- |
 | **Chat and Code** | Two icons at the top of the sidebar. Code lists your folders with a chat history each; Chat is a flat list of conversations. |
+| **MCP servers** | Settings → MCP connects Model Context Protocol servers (a local command or a remote URL). Paste a command, a URL, or the usual `mcpServers` JSON. Their tools are available to the agent in Code mode. |
+| **Long tasks** | Older messages are summarized automatically as the context fills up, and a ring at the top right of the chat shows how full it is. Claude's prompt caching keeps long runs cheap. |
 | **Permission modes** | **Manual** asks before everything. **Auto** runs reads, edits in the folder and known-safe commands, and asks about the rest. **Bypass** never asks. `⇧Tab` cycles. |
 | **Git, built in** | Branch and sync state, changed files with `+/−` counts, inline diffs, pick what to commit, **Commit**, **Push**, **Pull**. No remote yet? **Publish** connects one by URL or `owner/repo`, or creates it on GitHub with `gh`. Failures come with a plain-language fix. |
 | **Run code from the chat** | Shell, Python and Node snippets in a reply get a **Run** button. Output streams under the block with exit code and timing, and **Stop** while it runs. |
@@ -111,8 +113,8 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 Update `CHANGELOG.md` and `README.md`, bump the version in `package.json` and `package-lock.json` with `npm version <version> --no-git-tag-version`, and commit. Push the commit and matching version tag; GitHub Actions checks types, runs tests, builds the macOS app and attaches the installers to a GitHub Release:
 
 ```bash
-git tag v0.14.2
-git push origin main v0.14.2
+git tag v0.15.0
+git push origin main v0.15.0
 ```
 
 The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, the button says so and you download the update yourself. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.
@@ -123,7 +125,9 @@ The app checks the latest release on launch and every few hours and shows "Croo 
 src/main/       Electron main process, sandboxed preload bridge, terminal (node-pty), git, code runner
 src/renderer/   The UI: plain TypeScript and CSS, no framework (frog.ts is the mascot)
 src/agent.ts    Model and tool loop        src/providers/   OpenAI, Anthropic, Gemini
-src/tools/      File, search, shell        src/effort.ts    Per-model reasoning settings
+src/tools/      File, search (ripgrep), shell, web fetch, task list
+src/compact.ts  Context compaction         src/mcp.ts       MCP client (stdio and HTTP)
+src/effort.ts   Per-model reasoning settings
 ```
 
 MIT licensed.

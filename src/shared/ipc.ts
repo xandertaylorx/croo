@@ -36,6 +36,7 @@ export type ChatEvent = { chatId: string } & (
   | { type: 'thinking' }
   | { type: 'usage'; input: number; output: number; cacheRead?: number; cacheWrite?: number }
   | { type: 'compacted' }
+  | ({ type: 'context' } & ContextInfo)
   | { type: 'reasoning'; delta: string }
   | { type: 'text'; delta: string }
   | { type: 'textEnd' }
@@ -188,6 +189,23 @@ export interface RunExit {
 
 export type RunKind = 'shell' | 'python' | 'node'
 
+export interface McpServerInfo {
+  name: string
+  /** "npx -y @scope/server ." or the URL. */
+  target: string
+  transport: 'stdio' | 'http'
+  status: 'off' | 'connecting' | 'ready' | 'error'
+  error?: string
+  tools: string[]
+  disabled: boolean
+}
+
+/** How full the model's context is: tokens the last request used, and the window. */
+export interface ContextInfo {
+  used: number
+  window: number
+}
+
 export interface AppState {
   platform: string
   version: string
@@ -212,6 +230,7 @@ export interface AppState {
   engine: boolean
   voice: VoiceInfo
   workspaces: WorkspaceInfo[]
+  mcpServers: McpServerInfo[]
   /** Plain conversations (Chat mode), newest first. */
   chats: ChatInfo[]
   configError?: string
@@ -234,7 +253,7 @@ export interface CrooApi {
   addWorkspace(): Promise<void>
   removeWorkspace(path: string): Promise<void>
   newChat(cwd: string, kind: ChatKind): Promise<string>
-  openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[] } | null>
+  openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[]; context?: ContextInfo } | null>
   deleteChat(id: string): Promise<void>
   send(chatId: string, text: string, attachments?: Attachment[]): Promise<Result>
   /** Cut the chat back to before the n-th user message (0-based) so it can be edited or sent again. */
@@ -259,6 +278,11 @@ export interface CrooApi {
   setMode(mode: PermissionMode): Promise<void>
   setEffort(effort: Effort): Promise<void>
   setMemory(on: boolean): Promise<void>
+  /** Add MCP servers from a pasted command, URL or JSON config. */
+  mcpAdd(text: string, name?: string): Promise<Result>
+  mcpRemove(name: string): Promise<void>
+  mcpToggle(name: string, on: boolean): Promise<void>
+  mcpRestart(name: string): Promise<void>
   removeMemory(index: number): Promise<void>
   clearMemory(): Promise<void>
   downloadVoice(): Promise<void>

@@ -1,7 +1,7 @@
 import { PRESETS, type Preset } from '../providers/presets.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
-import type { AppState } from '../shared/ipc.js'
+import type { AppState, McpServerInfo } from '../shared/ipc.js'
 import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
 import type { IconName } from './dom.js'
@@ -172,7 +172,7 @@ function keyForm(name: string, close: () => void): HTMLElement {
   )
 }
 
-type Pane = 'providers' | 'general' | 'memory' | 'about'
+type Pane = 'providers' | 'general' | 'mcp' | 'memory' | 'about'
 let pane: Pane = 'providers'
 
 const MODE_OPTIONS: { id: 'manual' | 'auto' | 'bypass'; label: string; icon: IconName; desc: string }[] = [
@@ -336,6 +336,56 @@ export function openSettings() {
     )
   }
 
+  const mcpCard = (s: McpServerInfo) => {
+    const sw = h('input', { class: 'switch', type: 'checkbox', role: 'switch', title: s.disabled ? 'Turn on' : 'Turn off', onChange: (e: Event) => void croo.mcpToggle(s.name, (e.target as HTMLInputElement).checked) })
+    sw.checked = !s.disabled
+    const state = s.disabled ? 'Off' : s.status === 'ready' ? `${s.tools.length} tool${s.tools.length === 1 ? '' : 's'}` : s.status === 'connecting' ? 'Connecting…' : s.status === 'error' ? 'Failed' : 'Off'
+    return h(
+      'div',
+      { class: `pcard mcp-card ${s.status}` },
+      h(
+        'div',
+        { class: 'pcard-top' },
+        h('div', { class: 'pcard-id' }, h('span', { class: 'pcard-name' }, s.name), h('span', { class: `pill mcp-${s.disabled ? 'off' : s.status}` }, state)),
+        h('span', { class: 'push-right' }),
+        s.status === 'error' || s.status === 'ready' ? h('button', { class: 'icon-btn small', type: 'button', title: 'Reconnect', onClick: () => void croo.mcpRestart(s.name) }, icon('refresh', 14)) : null,
+        sw,
+        h('button', { class: 'icon-btn small danger', type: 'button', title: 'Remove server', onClick: () => void croo.mcpRemove(s.name) }, icon('trash', 14)),
+      ),
+      h('div', { class: 'pcard-row' }, h('span', { class: 'pcard-label' }, s.transport === 'http' ? 'URL' : 'Command'), h('span', { class: 'mono pcard-val', title: s.target }, s.target)),
+      s.error ? h('p', { class: 'form-error' }, s.error) : null,
+      s.tools.length ? h('p', { class: 'muted mcp-tools' }, s.tools.join(' · ')) : null,
+    )
+  }
+
+  const mcpPane = () => {
+    const servers = store.state.mcpServers
+    const text = h('textarea', {
+      class: 'input mono mcp-input',
+      rows: 5,
+      spellcheck: 'false',
+      placeholder: 'npx -y @modelcontextprotocol/server-filesystem ~/Documents\nhttps://mcp.example.com/mcp\n{"mcpServers": {"github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": {"GITHUB_TOKEN": "…"}}}}',
+    }) as HTMLTextAreaElement
+    const name = h('input', { class: 'input', placeholder: 'Name (optional)', spellcheck: 'false' }) as HTMLInputElement
+    const err = h('p', { class: 'form-error' })
+    const add = async () => {
+      err.textContent = ''
+      const r = await croo.mcpAdd(text.value, name.value)
+      if (!r.ok) err.textContent = r.error
+      else (text.value = ''), (name.value = '')
+    }
+    return [
+      head('MCP servers', 'Give the agent tools from other apps and services, in Code mode.'),
+      servers.length ? h('div', { class: 'profiles' }, servers.map(mcpCard)) : h('p', { class: 'muted' }, 'No servers yet.'),
+      h('div', { class: 'section-label' }, 'Add a server'),
+      h('p', { class: 'muted' }, 'Paste a command, a URL, or the JSON from a server’s README (the usual "mcpServers" format works, so you can copy it from Claude, Cursor or VS Code settings).'),
+      text,
+      h('div', { class: 'mcp-add' }, name, h('button', { class: 'btn primary', type: 'button', onClick: () => void add() }, 'Add')),
+      err,
+      h('p', { class: 'muted' }, 'Servers run on this Mac with your permissions, so add only ones you trust. Tokens in "env" and "headers" are ', store.state.secureKeys ? 'encrypted with your keychain.' : 'saved in ~/.config/croo.', ' In Auto mode Croo asks before each MCP tool call unless the server marks the tool read-only.'),
+    ]
+  }
+
   const memoryPane = () => [head('Memory', 'What Croo remembers about you between chats.'), memorySection()]
 
   const voiceRow = () => {
@@ -439,12 +489,12 @@ export function openSettings() {
 
   const paint = () => {
     redraw = paint
-    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['memory', 'Memory', 'sparkle'], ['about', 'About', 'file']]
+    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['mcp', 'MCP', 'plug'], ['memory', 'Memory', 'sparkle'], ['about', 'About', 'file']]
     nav.replaceChildren(
       h('div', { class: 'settings-title' }, 'Settings'),
       ...tabs.map(([id, label, ic]) => h('button', { class: `nav-btn ${pane === id ? 'on' : ''}`, type: 'button', 'aria-current': pane === id ? 'page' : undefined, onClick: () => ((pane = id), paint()) }, icon(ic, 16), label)),
     )
-    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : pane === 'memory' ? memoryPane() : aboutPane()))
+    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : pane === 'mcp' ? mcpPane() : pane === 'memory' ? memoryPane() : aboutPane()))
   }
 
   const addProvider = () => {

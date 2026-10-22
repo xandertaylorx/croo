@@ -46,7 +46,15 @@ export function classifyCommand(command: string): 'safe' | 'ask' {
 export class Permissions {
   private always = new Set<string>()
 
-  constructor(public mode: PermissionMode = 'auto') {}
+  /** `extraReadOnly` says which other tools (e.g. MCP tools the server marks read-only) are safe to run unasked. */
+  constructor(
+    public mode: PermissionMode = 'auto',
+    private extraReadOnly: (tool: string) => boolean = () => false,
+  ) {}
+
+  isReadOnly(tool: string): boolean {
+    return READ_ONLY_TOOLS.has(tool) || this.extraReadOnly(tool)
+  }
 
   /**
    * manual: everything asks, reads included.
@@ -56,10 +64,10 @@ export class Permissions {
   needsApproval(tool: string, args?: { command?: unknown }): boolean {
     if (tool === 'remember' || tool === 'todo_write' || this.mode === 'bypass') return false
     if (this.mode === 'manual') return true
-    if (READ_ONLY_TOOLS.has(tool) || this.always.has(tool)) return false
+    if (this.isReadOnly(tool) || this.always.has(tool)) return false
     if (tool === 'bash') return classifyCommand(String(args?.command ?? '')) !== 'safe'
     // A request leaves the machine, and a URL can carry data out of the project: ask until allowed.
-    if (tool === 'web_fetch') return true
+    if (tool === 'web_fetch' || tool.startsWith('mcp__')) return true
     return false // file tools can only touch the working folder
   }
 

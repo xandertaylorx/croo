@@ -86,6 +86,19 @@ export interface Profile {
   outputPerMTok?: number
 }
 
+/** An MCP server: a command Croo starts (stdio) or a remote URL (Streamable HTTP). */
+export interface McpServerConfig {
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+  url?: string
+  headers?: Record<string, string>
+  disabled?: boolean
+  /** env and headers encrypted with the OS keychain (written by the desktop app in their place). */
+  secretsEnc?: string
+}
+
 /** manual: ask for everything · auto: ask only when it matters · bypass: never ask */
 export type PermissionMode = 'manual' | 'auto' | 'bypass'
 
@@ -101,6 +114,8 @@ export interface Config {
   /** Shown bottom left; both optional. `avatar` is a small image data URL. */
   /** Croo remembers things about you across chats (Chat mode). */
   memory?: boolean
+  /** MCP servers whose tools the agent can use in Code mode, by name. */
+  mcpServers?: Record<string, McpServerConfig>
   userName?: string
   avatar?: string
 }

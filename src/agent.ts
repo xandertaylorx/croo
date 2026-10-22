@@ -1,6 +1,6 @@
 import type { Msg, Provider, ToolCall, Usage } from './types.js'
 import { TOOLS, toolByName, truncate, type Preview, type Tool } from './tools/index.js'
-import { READ_ONLY_TOOLS, type Permissions } from './permissions.js'
+import type { Permissions } from './permissions.js'
 import { COMPACT_AT, compact, isContextOverflow, modelView, promptTokens } from './compact.js'
 
 export interface AgentHooks {
@@ -14,6 +14,8 @@ export interface AgentHooks {
   onUsage(u: Usage): void
   /** The older part of the conversation was just summarized to free up context. */
   onCompacted?(): void
+  /** Tokens the conversation now takes in the model's context (the last request plus its reply). */
+  onContext?(tokens: number): void
 }
 
 export interface TurnOptions {
@@ -100,6 +102,7 @@ export async function runTurn(o: TurnOptions): Promise<void> {
     hooks.onTextEnd()
     hooks.onUsage(res.usage)
     lastPrompt = promptTokens(res.usage) + res.usage.output
+    hooks.onContext?.(lastPrompt)
     if (!res.toolCalls.length) {
       const found = extractTextToolCalls(res.text, tools.map((t) => t.spec.name))
       if (found.calls.length) res = { ...res, text: found.rest, toolCalls: found.calls }
@@ -125,7 +128,7 @@ export async function runTurn(o: TurnOptions): Promise<void> {
   throw new Error(`Stopped after ${maxSteps} steps.`)
 }
 
-const runsFreely = (c: ToolCall, o: TurnOptions) => READ_ONLY_TOOLS.has(c.name) && !o.permissions.needsApproval(c.name, c.args)
+const runsFreely = (c: ToolCall, o: TurnOptions) => o.permissions.isReadOnly(c.name) && !o.permissions.needsApproval(c.name, c.args)
 
 /** Run `fn`, turning an abort during it into Cancelled. */
 async function guard<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
@@ -143,7 +146,7 @@ function toolMsg(c: ToolCall, content: string, isError: boolean): Msg {
 
 async function execute(c: ToolCall, o: TurnOptions): Promise<Msg> {
   const { hooks } = o
-  const tool = toolByName(c.name)
+  const tool = (o.tools ?? TOOLS).find((t) => t.spec.name === c.name) ?? toolByName(c.name)
   if (!tool) return toolMsg(c, `Unknown tool "${c.name}".`, true)
   let summary = ''
   try {

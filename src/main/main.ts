@@ -10,7 +10,8 @@ import { isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig, defaultConf
 import { Permissions } from '../permissions.js'
 import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, type UserContext } from '../prompt.js'
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
-import { rememberTool } from '../tools/index.js'
+import { TOOLS, rememberTool, setExtraTools } from '../tools/index.js'
+import { McpManager, parseMcpJson } from '../mcp.js'
 import { setRipgrepDir } from '../tools/rg.js'
 import { contextWindow } from '../compact.js'
 import { demoProvider } from '../providers/demo.js'
@@ -35,7 +36,7 @@ import { checkLatest, GITHUB_REPO, runningBundle, stageUpdate } from './updates.
 import { gitCommit, gitConnect, gitDiff, gitInit, gitPublish, gitPull, gitPush, gitStatus } from './git.js'
 import { Runner } from './runner.js'
 import { Terminals } from './terminal.js'
-import type { AttachedFile, Config, ImageAtt, Msg, PermissionMode, Profile } from '../types.js'
+import type { AttachedFile, Config, ImageAtt, McpServerConfig, Msg, PermissionMode, Profile } from '../types.js'
 import { loadWorkspaces, saveWorkspaces } from '../workspaces.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -58,6 +59,9 @@ interface Runtime {
   pending?: { id: string; resolve: (a: 'y' | 'n' | 'a') => void }
 }
 const runtimes = new Map<string, Runtime>()
+const mcp = new McpManager(() => pushState(), app.getVersion())
+setExtraTools(() => mcp.tools())
+const newPermissions = () => new Permissions(cfg.permissionMode, (t) => mcp.readOnly(t))
 const terminals = new Terminals()
 const runner = new Runner()
 
@@ -82,6 +86,20 @@ function persist() {
     }
     out.profiles[name] = q
   }
+  if (cfg.mcpServers) {
+    out.mcpServers = {}
+    for (const [name, s] of Object.entries(cfg.mcpServers)) {
+      const q = { ...s }
+      if ((q.env || q.headers) && safeStorage.isEncryptionAvailable()) {
+        try {
+          q.secretsEnc = safeStorage.encryptString(JSON.stringify({ env: q.env, headers: q.headers })).toString('base64')
+          delete q.env
+          delete q.headers
+        } catch {}
+      }
+      out.mcpServers[name] = q
+    }
+  }
   saveConfig(out)
 }
 
@@ -91,6 +109,13 @@ function decryptKeys() {
     try {
       p.apiKey = safeStorage.decryptString(Buffer.from(p.apiKeyEnc, 'base64'))
     } catch {} // a different machine or keychain: the profile just shows as having no key
+  }
+  for (const s of Object.values(cfg.mcpServers ?? {})) {
+    if (!s.secretsEnc) continue
+    try {
+      Object.assign(s, JSON.parse(safeStorage.decryptString(Buffer.from(s.secretsEnc, 'base64'))))
+    } catch {}
+    delete s.secretsEnc
   }
 }
 
@@ -141,6 +166,15 @@ function buildState(): AppState {
     effort: cfg.effort,
     notify: cfg.notify,
     memory: cfg.memory !== false,
+    mcpServers: [...mcp.servers.values()].map((s) => ({
+      name: s.name,
+      target: s.cfg.url ?? [s.cfg.command, ...(s.cfg.args ?? [])].join(' '),
+      transport: s.cfg.url ? ('http' as const) : ('stdio' as const),
+      status: s.status,
+      error: s.error || undefined,
+      tools: s.tools.map((t) => t.name),
+      disabled: !!s.cfg.disabled,
+    })),
     memoryEntries: loadMemory(),
     userName: cfg.userName ?? '',
     avatar: cfg.avatar ?? '',
@@ -222,7 +256,7 @@ function runtime(id: string): Runtime | null {
   if (existing) return existing
   const session = loadSession(id)
   if (!session) return null
-  const rt: Runtime = { session, permissions: new Permissions(cfg.permissionMode) }
+  const rt: Runtime = { session, permissions: newPermissions() }
   runtimes.set(id, rt)
   return rt
 }
@@ -284,6 +318,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
       let profile = active?.[1]
       if (!demo && profile?.engine) profile = { ...profile, baseUrl: await ensureEngine(profile.engine, () => [...runtimes.values()].some((r) => r.abort)) }
       const provider = demo ? demoProvider() : createProvider(profile!)
+      const window = demo || !profile ? undefined : contextWindow(profile.model, !!profile.engine)
       await runTurn({
         provider,
         system: plain ? buildChatPrompt(new Date(), identity, userCtx) : buildSystemPrompt(session.cwd, new Date(), identity, userCtx),
@@ -292,8 +327,8 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
         permissions: rt.permissions,
         signal: ac.signal,
         effort: cfg.effort,
-        tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : undefined,
-        contextWindow: demo || !profile ? undefined : contextWindow(profile.model, !!profile.engine),
+        tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : [...TOOLS, ...mcp.tools()],
+        contextWindow: window,
         hooks: {
           onThinking: () => emit({ chatId, type: 'thinking' }),
           onReasoning: (delta) => emit({ chatId, type: 'reasoning', delta }),
@@ -310,6 +345,10 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
             }),
           onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
           onCompacted: () => emit({ chatId, type: 'compacted' }),
+          onContext: (used) => {
+            session.context = { used, window: window ?? 0 }
+            if (window) emit({ chatId, type: 'context', used, window })
+          },
         },
       })
       emit({ chatId, type: 'done', seconds: (Date.now() - t0) / 1000 })
@@ -406,13 +445,13 @@ function registerIpc() {
     // Reuse an empty chat instead of piling up blanks.
     for (const [id, rt] of runtimes) if ((rt.session.kind === 'chat') === (kind === 'chat') && rt.session.cwd === folder && !rt.session.messages.length) return id
     const session = newSession(folder, activeProfile()?.[0] ?? 'demo', kind)
-    runtimes.set(session.id, { session, permissions: new Permissions(cfg.permissionMode) })
+    runtimes.set(session.id, { session, permissions: newPermissions() })
     pushState()
     return session.id
   })
   ipcMain.handle('chat:open', (_e, id: string) => {
     const rt = runtime(id)
-    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages) } : null
+    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages), context: rt.session.context } : null
   })
   ipcMain.handle('chat:delete', (_e, id: string) => {
     const rt = runtimes.get(id)
@@ -485,6 +524,28 @@ function registerIpc() {
     persist()
     pushState()
   })
+  const saveMcp = (servers: Record<string, McpServerConfig>) => {
+    cfg = { ...cfg, mcpServers: servers }
+    persist()
+    mcp.configure(servers)
+  }
+  ipcMain.handle('mcp:add', (_e, text: string, name?: string): Result => {
+    try {
+      saveMcp({ ...(cfg.mcpServers ?? {}), ...parseMcpJson(String(text ?? ''), name) })
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) }
+    }
+  })
+  ipcMain.handle('mcp:remove', (_e, name: string) => {
+    const { [name]: _gone, ...rest } = cfg.mcpServers ?? {}
+    saveMcp(rest)
+  })
+  ipcMain.handle('mcp:toggle', (_e, name: string, on: boolean) => {
+    const s = cfg.mcpServers?.[name]
+    if (s) saveMcp({ ...cfg.mcpServers, [name]: { ...s, disabled: on ? undefined : true } })
+  })
+  ipcMain.handle('mcp:restart', (_e, name: string) => mcp.restart(name))
   ipcMain.handle('memory:set', (_e, on: boolean) => {
     cfg = { ...cfg, memory: !!on }
     persist()
@@ -869,6 +930,7 @@ else {
   void app.whenReady().then(() => {
     fixPath()
     loadAll()
+    mcp.configure(cfg.mcpServers ?? {})
     initVoice(app.isPackaged ? path.join(process.resourcesPath, 'whisper') : path.join(here, '..', '..', 'vendor', 'whisper'))
     setRipgrepDir(app.isPackaged ? path.join(process.resourcesPath, 'rg') : path.join(here, '..', '..', 'vendor', 'rg'))
     initLocal(app.isPackaged ? path.join(process.resourcesPath, 'llama') : path.join(here, '..', '..', 'vendor', 'llama'), pushState)
@@ -902,5 +964,6 @@ else {
     for (const rt of runtimes.values()) stopChat(rt)
     terminals.killAll()
     runner.stopAll()
+    mcp.stopAll()
   })
 }

@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.15.0
 
+- **MCP servers**: Settings → MCP connects Model Context Protocol servers, local commands or remote URLs, and the agent can use their tools in Code mode. Paste a command, a URL, or the usual `{"mcpServers": ...}` JSON from Claude, Cursor or VS Code. Each server shows its status and tools, and can be turned off, reconnected or removed. Tokens in `env` and `headers` are encrypted with your keychain. In Auto mode Croo asks before each MCP tool call unless the server marks the tool read-only
+- **Context ring**: a small ring at the top right of each chat fills as the conversation uses the model's context window; hover it for the exact numbers
 - **Long tasks keep going**: when a conversation nears the model's context limit, Croo summarizes the older part and carries on. The chat still shows everything, and a quiet line marks where the summary starts. If a provider says a request is too long, Croo summarizes and retries instead of failing
 - **Prompt caching for Claude**: the system prompt, tools and conversation so far are cached between steps, so long agent runs cost much less and start each step faster. Cached tokens from OpenAI and Gemini are counted too, and the cost estimate prices cache reads and writes
 - **Faster, sharper search**: grep and list_files use ripgrep (bundled with the app), about 4× faster on large projects and with no 20,000-file cap. grep can return only file names or match counts, show context lines, and match across lines
