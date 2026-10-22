@@ -4,147 +4,148 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Croo: a coding agent with a frog in it</title>
-<meta name="description" content="Croo is a minimal desktop app for working with AI on your code. Bring your own API key or a local model. No account, no telemetry, no backend." />
-<meta name="theme-color" content="#0f1311" />
+<meta name="description" content="Croo is a minimal desktop app for working with AI on your code. Bring your own API key or run a model on your Mac. No account, no telemetry, no backend." />
+<meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#1f1e1d" media="(prefers-color-scheme: dark)" />
 <link rel="icon" href="assets/icon.png" />
 <meta property="og:title" content="Croo: a coding agent with a frog in it" />
 <meta property="og:description" content="A minimal desktop coding agent. Bring your own key or a local model. No account, no telemetry." />
-<meta property="og:image" content="https://ai.crooli.com/assets/git.png" />
+<meta property="og:image" content="https://ai.crooli.com/assets/og.jpg" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div class="glow" aria-hidden="true"></div>
 
 <header class="nav">
-  <a class="brand" href="#top" aria-label="Croo home"><img src="assets/icon.png" width="28" height="28" alt="" />Croo</a>
-  <nav aria-label="Main">
-    <a href="#features">Features</a>
-    <a href="#models">Models</a>
-    <a href="#download">Download</a>
-    <a class="gh" href="https://github.com/xandertaylorx/croo" rel="noopener">GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
-  </nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Croo home">
+      <svg class="frog small" viewBox="0 0 15 8" shape-rendering="crispEdges" aria-hidden="true"><path class="body" d="M1 0h5v2h-5zM9 0h5v2h-5zM0 2h15v4h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/><g class="face"><rect x="3" y="1" width="1" height="2"/><rect x="11" y="1" width="1" height="2"/><rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></svg>
+      Croo
+    </a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#models">Models</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/xandertaylorx/croo" rel="noopener">GitHub</a>
+    </nav>
+  </div>
 </header>
 
 <main id="top">
-  <section class="hero">
-    <div class="frog-wrap"><svg class="frog" viewBox="0 0 15 8" shape-rendering="crispEdges" aria-hidden="true">
-  <g class="hop"><path class="body" d="M1 0h5v1h-5zM9 0h5v1h-5zM1 1h5v1h-5zM9 1h5v1h-5zM0 2h15v1h-15zM0 3h15v1h-15zM0 4h15v1h-15zM0 5h15v1h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/>
-    <g class="face"><rect class="eye" x="3" y="1" width="1" height="2"/><rect class="eye" x="11" y="1" width="1" height="2"/>
-    <rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></g>
-</svg></div>
-    <p class="eyebrow">Open source · macOS today, Windows next</p>
+  <section class="hero wrap">
+    <svg class="frog big" viewBox="0 0 15 8" shape-rendering="crispEdges" aria-hidden="true">
+      <g class="hop"><path class="body" d="M1 0h5v2h-5zM9 0h5v2h-5zM0 2h15v4h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/>
+      <g class="face"><rect class="eye" x="3" y="1" width="1" height="2"/><rect class="eye" x="11" y="1" width="1" height="2"/><rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></g>
+    </svg>
     <h1>A coding agent<br />with a frog in it.</h1>
-    <p class="lede">Croo is a small, quiet desktop app for working with AI on your code. Each folder gets its own chats. You decide what it may do on its own, and you see everything it does.</p>
+    <p class="lede">Croo is a small, quiet Mac app for working with AI on your code. Bring your own key or run a model on your Mac. You decide what it may do on its own, and you see everything it does.</p>
 
-    <div class="cta">
-      <button class="btn primary big" id="copy-install" type="button" data-copy="#cmd-install">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M5 15.5V6.5A1.5 1.5 0 0 1 6.5 5h9"/></svg>
-        <span class="lbl">Copy Mac install command</span><em class="rec">Recommended</em>
+    <div class="install" role="group" aria-label="Install with Terminal">
+      <div class="install-cmd">
+        <span class="prompt" aria-hidden="true">$</span>
+        <code id="cmd-install">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
+      </div>
+      <button class="btn primary" type="button" data-copy="#cmd-install">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M5 15.5V6.5A1.5 1.5 0 0 1 6.5 5h9"/></svg>
+        <span class="lbl">Copy</span>
       </button>
-      <a class="btn ghost" id="dl-main" href="https://github.com/xandertaylorx/croo/releases/latest">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
-        <span>Download</span><small id="dl-version"></small>
-      </a>
-      <a class="btn ghost" href="https://github.com/xandertaylorx/croo" rel="noopener">GitHub</a>
     </div>
-
-    <div class="cmd" role="group" aria-label="Install with Terminal">
-      <span class="prompt" aria-hidden="true">$</span>
-      <code id="cmd-install">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
-    </div>
-    <p class="why"><b>Paste it into Terminal.</b> Installing this way skips macOS’s “Croo is damaged and can’t be opened” warning, which downloads from a browser trigger because Croo isn’t notarized (that needs a paid Apple account). No settings to dig through.</p>
-    <p class="fine">Bring your own API key, or a local model. No account. No telemetry. No backend.</p>
+    <p class="hint">Paste it into Terminal. It installs the latest version and opens it, with no “damaged app” warning to click through. <a href="#download">Other ways to install</a></p>
+    <p class="meta"><span id="hero-version">Free and open source</span><span aria-hidden="true">·</span><span>Apple Silicon</span><span aria-hidden="true">·</span><span>MIT</span></p>
   </section>
 
-  <section class="shot" aria-label="Screenshots">
-    <div class="tabs" role="tablist" aria-label="Screenshots">
-      <button role="tab" aria-selected="true" data-shot="git">Chat + Git</button>
-      <button role="tab" aria-selected="false" data-shot="chat">Run code</button>
-      <button role="tab" aria-selected="false" data-shot="settings">Settings</button>
-    </div>
+  <section class="shot wrap-wide" aria-label="Screenshot">
     <figure class="window">
-      <div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div>
-      <img id="shot-img" src="assets/git.png" alt="Croo showing a chat on the left and the Git panel with an inline diff on the right" width="1920" height="1200" />
+      <picture>
+        <source srcset="assets/app-dark.jpg" media="(prefers-color-scheme: dark)" />
+        <img src="assets/app-light.jpg" alt="Croo: a chat about a project on the left, the Git panel with an inline diff on the right" width="2400" height="1500" />
+      </picture>
     </figure>
   </section>
 
-  <section id="features" class="section">
-    <p class="label">What it does</p>
-    <h2>Everything in one calm window.</h2>
-    <div class="grid">
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>You set the leash</h3><p><b>Manual</b> asks before everything. <b>Auto</b> runs reads, edits and safe commands, and asks about the rest. <b>Bypass</b> never asks.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2.2"/><circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="8.5" r="2.2"/><path d="M6 7.7v8.6M18 10.7c0 4.3-6 3.3-11 6.3"/></svg></div><h3>Git, built in</h3><p>See every change with inline diffs, pick what to commit, then push. No remote yet? Publish creates one on GitHub for you.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg></div><h3>Run it from the chat</h3><p>Shell, Python and Node snippets get a Run button. Output streams right under the code with the exit code and timing.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></svg></div><h3>See it think</h3><p>Reasoning streams into a row you can open. A live clock, token count and cost estimate run while it works.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="m21 11-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg></div><h3>Attach and mention</h3><p>Paste screenshots, drop files, or type <code>@</code> to pull in a file from your project. <code>/init</code> writes an <code>AGENTS.md</code> for you.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 17h7"/></svg></div><h3>Terminal, files, browser</h3><p>A real shell, a file tree with a viewer, and a small browser for previewing what you build, all beside your chat.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></div><h3>Find anything</h3><p><kbd>⌘</kbd><kbd>K</kbd> searches chats by what was said, files by name, and actions. Edit any message and resend, or retry a reply.</p></article>
-      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg></div><h3>Chat or Code</h3><p>Code mode gives each folder its own chats and tools. Chat mode is a plain conversation with nothing to set up.</p></article>
-    </div>
+  <section id="features" class="section wrap">
+    <h2>Everything for working on code, in one calm window.</h2>
+    <dl class="features">
+      <div><dt>You set the leash</dt><dd><b>Manual</b> asks before every action. <b>Auto</b> reads, edits and runs safe commands, and asks about the rest. <b>Bypass</b> never asks.</dd></div>
+      <div><dt>Git, built in</dt><dd>Inline diffs for every change, pick what to commit, and push. AI-written commit messages, and one click to publish a new repo to GitHub.</dd></div>
+      <div><dt>Run it from the chat</dt><dd>Shell, Python and Node snippets get a Run button. Output streams in under the code with the exit code and timing.</dd></div>
+      <div><dt>Terminal, files, browser</dt><dd>A real shell, a file tree with a viewer, and a small browser for previewing what you build, all beside the chat.</dd></div>
+      <div><dt>See it think</dt><dd>Reasoning streams into a row you can open. A clock, token count and cost estimate run while it works.</dd></div>
+      <div><dt>Attach, mention, speak</dt><dd>Paste screenshots, drop files, type <code>@</code> to pull in a file, or dictate with the mic. Speech is transcribed on your Mac.</dd></div>
+      <div><dt>Find anything</dt><dd><kbd>⌘</kbd><kbd>K</kbd> searches chats by what was said, files by name, and actions. Edit any message and resend.</dd></div>
+      <div><dt>Chat or Code</dt><dd>Code mode gives each folder its own chats and tools. Chat mode is a plain conversation that remembers what you tell it.</dd></div>
+    </dl>
   </section>
 
-  <section id="models" class="section narrow">
-    <p class="label">Bring your own model</p>
-    <h2>Your key. Your model. Your machine.</h2>
-    <p class="sub">Works with any provider, and with models running locally. Your keys are encrypted in your Mac's keychain and only ever sent to the provider you choose.</p>
-    <ul class="chips" aria-label="Supported providers">
-      <li>Claude</li><li>OpenAI</li><li>Gemini</li><li>Ollama</li><li>OpenRouter</li><li>Groq</li><li>DeepSeek</li><li>Mistral</li><li>xAI</li><li>Together</li><li>LM Studio</li><li>llama.cpp</li><li>vLLM</li><li>Any OpenAI-compatible URL</li>
-    </ul>
-    <div class="trio">
-      <div><b>No account</b><span>Nothing to sign up for.</span></div>
-      <div><b>No telemetry</b><span>It never phones home.</span></div>
-      <div><b>No backend</b><span>Chats and keys stay on your Mac.</span></div>
+  <section id="models" class="section wrap split">
+    <div class="split-text">
+      <h2>Your key. Your model. Your Mac.</h2>
+      <p>Use Claude, GPT, Gemini or anything that speaks the OpenAI API. Or download a model and run it on your Mac, free and offline, with nothing to sign up for.</p>
+      <p>Keys are encrypted in your keychain and only ever sent to the provider you pick.</p>
+      <p class="providers">Claude · OpenAI · Gemini · Ollama · OpenRouter · Groq · DeepSeek · Mistral · xAI · Together · LM Studio · llama.cpp · vLLM · any OpenAI-compatible URL</p>
+      <ul class="facts">
+        <li><b>No account.</b> Nothing to sign up for.</li>
+        <li><b>No telemetry.</b> It never phones home.</li>
+        <li><b>No backend.</b> Chats and keys stay on your Mac.</li>
+      </ul>
     </div>
+    <figure class="window small">
+      <picture>
+        <source srcset="assets/settings-dark.jpg" media="(prefers-color-scheme: dark)" />
+        <img src="assets/settings-light.jpg" alt="Croo settings: profile, permission mode and reasoning effort" width="1594" height="1236" loading="lazy" />
+      </picture>
+    </figure>
   </section>
 
-  <section id="download" class="section narrow">
-    <p class="label">Get Croo</p>
-    <h2>Download</h2>
-    <div class="install-card">
-      <span class="rec">Recommended</span>
-      <h3>Install from Terminal</h3>
-      <p>One line installs the latest Croo and opens it. It <b>bypasses the macOS “damaged app” warning</b> that browser downloads trigger, so there is nothing to click through. Apple Silicon Macs.</p>
-      <div class="cmd" role="group" aria-label="Install with Terminal">
-        <span class="prompt" aria-hidden="true">$</span>
-        <code id="cmd-install-2">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
-        <button class="copy" type="button" data-copy="#cmd-install-2" aria-label="Copy command">Copy</button>
+  <section id="download" class="section wrap">
+    <h2>Get Croo</h2>
+    <div class="ways">
+      <div class="way">
+        <div class="way-head"><h3>Install from Terminal</h3><span class="tag">Recommended</span></div>
+        <p>One line installs the latest Croo into Applications and opens it. Croo isn’t notarized by Apple yet, and this way skips the “damaged app” warning that browser downloads get.</p>
+        <div class="cmd">
+          <span class="prompt" aria-hidden="true">$</span>
+          <code id="cmd-install-2">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
+          <button class="copy" type="button" data-copy="#cmd-install-2">Copy</button>
+        </div>
+        <p class="note" id="platform-note"></p>
       </div>
-      <p class="fine left"><span id="platform-note"></span></p>
-    </div>
-    <p class="or">or download the app yourself</p>
-    <div class="release" id="release">
-      <div class="release-top">
-        <div><span class="ver" id="rel-version">Latest release</span><span class="date" id="rel-date"></span></div>
-        <a class="notes" id="rel-notes" href="https://github.com/xandertaylorx/croo/releases">Release notes</a>
+      <div class="way">
+        <div class="way-head"><h3 id="rel-version">Download the app</h3><span class="date" id="rel-date"></span></div>
+        <p>A disk image for Apple Silicon Macs. If macOS says Croo is “damaged” after opening it, it isn’t: run <code>xattr -cr /Applications/Croo.app</code> once.</p>
+        <div class="dl-row">
+          <a class="btn" id="dl-arm" href="https://github.com/xandertaylorx/croo/releases/latest">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+            <span>Download .dmg</span><small id="dl-arm-size"></small>
+          </a>
+          <a class="btn" id="dl-intel" href="https://github.com/xandertaylorx/croo/releases/latest" hidden>Intel Mac</a>
+          <a class="btn" id="dl-zip" href="https://github.com/xandertaylorx/croo/releases/latest" hidden>.zip</a>
+          <a class="link" id="rel-notes" href="https://github.com/xandertaylorx/croo/releases">Release notes</a>
+        </div>
       </div>
-      <div class="dl-row">
-        <a class="btn ghost" id="dl-arm" href="https://github.com/xandertaylorx/croo/releases/latest"><span>Download for Apple Silicon</span><small id="dl-arm-size"></small></a>
-        <a class="btn ghost" id="dl-intel" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>Intel Mac</span></a>
-        <a class="btn ghost" id="dl-zip" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>.zip</span></a>
+      <div class="way">
+        <div class="way-head"><h3>Build from source</h3></div>
+        <p>Needs Node 20 or later. Builds the same app the releases ship.</p>
+        <div class="cmd">
+          <span class="prompt" aria-hidden="true">$</span>
+          <code id="cmd2">git clone https://github.com/xandertaylorx/croo &amp;&amp; cd croo &amp;&amp; npm i &amp;&amp; npm run dist</code>
+          <button class="copy" type="button" data-copy="#cmd2">Copy</button>
+        </div>
       </div>
-      <p class="fine left">If macOS says Croo is “damaged” after a browser download, it isn’t: run <code>xattr -cr /Applications/Croo.app</code> once, or use the install command above.</p>
-    </div>
-    <p class="or">or build it from source</p>
-    <div class="cmd" role="group" aria-label="Build from source">
-      <span class="prompt" aria-hidden="true">$</span>
-      <code id="cmd2">git clone https://github.com/xandertaylorx/croo &amp;&amp; cd croo &amp;&amp; npm i &amp;&amp; npm run dist</code>
-      <button class="copy" type="button" data-copy="#cmd2" aria-label="Copy command">Copy</button>
     </div>
   </section>
 </main>
 
 <footer class="foot">
-  <div class="foot-inner">
-    <a class="brand" href="#top"><img src="assets/icon.png" width="22" height="22" alt="" />Croo</a>
+  <div class="wrap foot-inner">
+    <span class="foot-brand">Croo · MIT licensed · made with a frog</span>
     <nav aria-label="Footer">
       <a href="https://github.com/xandertaylorx/croo">GitHub</a>
       <a href="https://github.com/xandertaylorx/croo/releases">Releases</a>
       <a href="https://github.com/xandertaylorx/croo/blob/main/CHANGELOG.md">Changelog</a>
       <a href="https://github.com/xandertaylorx/croo/issues">Issues</a>
     </nav>
-    <p>MIT licensed. Made with a frog.</p>
   </div>
 </footer>
 

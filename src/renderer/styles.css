@@ -1084,6 +1084,7 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
 }
 .md .code code {
   padding: 0;
+  border: 0;
   background: none;
   font: inherit;
 }
@@ -2241,6 +2242,7 @@ button.inst:hover {
   display: none;
 }
 .md .run-out code {
+  border: 0;
   background: none;
 }
 

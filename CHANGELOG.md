@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.2
+
+- **Update progress**: the update button and Settings show download and install progress while Croo updates
+- Fixed unwanted borders around code inside chat code blocks and command output
+- Refreshed the website with a quieter layout, light and dark screenshots, clearer install options and a new social preview image; updated the README screenshots
+
 ## 0.14.1
 
 - **Newer OpenAI models work**: Croo now talks to OpenAI through the Responses API, so models like gpt-6.x take tools and a reasoning effort together instead of failing with "Function tools with reasoning_effort are not supported" or "not supported in the v1/chat/completions endpoint". Reasoning summaries show in the Thinking row. Other OpenAI-compatible servers (Groq, OpenRouter, Ollama, LM Studio) are unchanged

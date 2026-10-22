@@ -11,7 +11,7 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 ![License](https://img.shields.io/badge/license-MIT-5ed67e?style=flat-square)
 ![Electron](https://img.shields.io/badge/built%20with-Electron-5ed67e?style=flat-square)
 
-[Website](https://ai.crooli.com/) · [Features](#features) · [Run it](#run-it) · [Providers](#providers-and-keys) · [Shortcuts](#shortcuts)
+[Website](https://ai.crooli.com/) · [Latest release](https://github.com/xandertaylorx/croo/releases/latest) · [Changelog](CHANGELOG.md) · [Features](#features) · [Run it](#run-it) · [Providers](#providers-and-keys) · [Shortcuts](#shortcuts)
 
 <br>
 
@@ -22,6 +22,10 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 <br>
 
 **Code** mode gives each project folder its own chats and lets the agent read, search, edit and run things in it. **Chat** mode is a plain conversation with no folder and no tools. You decide how much the agent may do on its own, and everything it does is visible: diffs, commands, output, reasoning, time and tokens.
+
+## What’s new in 0.14.2
+
+Update download and install progress now appears in the sidebar and Settings. Code blocks and command output no longer pick up extra borders. The [website](https://ai.crooli.com/) has a quieter layout, light and dark screenshots, and clearer install options. See the [changelog](CHANGELOG.md) for release history.
 
 ## Features
 
@@ -39,7 +43,7 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 | **Search** | `⌘K` finds chats (by title or what was said), files and actions. |
 | **Edit and retry** | Edit any message and resend (everything after it is replaced), or **Retry** the last reply. |
 | **Cost** | Time, tokens and an estimated cost under each reply. Claude prices are built in, set your own for other providers, local models are free. |
-| **Notifications and updates** | A system notification when a task finishes or needs your OK while Croo is in the background. A notice at the bottom left of the sidebar when a new version is out. |
+| **Notifications and updates** | A system notification when a task finishes or needs your OK while Croo is in the background. A notice at the bottom left of the sidebar when a new version is out; download and install progress appears there and in Settings → About. |
 | **Project instructions** | Reads `AGENTS.md`, `CLAUDE.md` and `CROO.md` every turn. `/init` studies the project and writes `AGENTS.md`. |
 | **A frog** | Pixel art that breathes, blinks, hops, catches flies, falls asleep, and reacts to thinking, working, waiting, done and errors. Click it. |
 
@@ -104,13 +108,14 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 
 ## Releases and updates
 
-Push a version tag and GitHub Actions builds the macOS app and attaches it to a GitHub Release:
+Update `CHANGELOG.md` and `README.md`, bump the version in `package.json` and `package-lock.json` with `npm version <version> --no-git-tag-version`, and commit. Push the commit and matching version tag; GitHub Actions checks types, runs tests, builds the macOS app and attaches the installers to a GitHub Release:
 
 ```bash
-git tag v0.7.0 && git push origin v0.7.0
+git tag v0.14.2
+git push origin main v0.14.2
 ```
 
-The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking it downloads the installer for your Mac. Builds are unsigned until a Developer ID certificate is added to the repository secrets (see `.github/workflows/release.yml`), so macOS may ask you to confirm the first launch.
+The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, it opens the download page. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.
 
 ## Layout
 
