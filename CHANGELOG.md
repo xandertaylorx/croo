@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0
+
+- **Local model, built in**: Croo now bundles its own engine (llama.cpp). In Settings → Providers (or on first run) download Qwen3 4B Instruct, about 2.5 GB, and it runs on your Mac with Metal: free, private, offline, no account or key. The model lives in Croo's data folder, not in the app, so updating Croo never removes it; downloads resume and are checksum-verified. The engine starts when you chat and stops after ten idle minutes
+- Memory has its own tab in Settings
+- Fixed choosing a profile picture doing nothing
+- Bottom left now shows your profile picture (or your initial) instead of the frog
+
 ## 0.10.0
 
 - **Memory**: in Chat mode Croo saves durable things you tell it (preferences, projects, people) and uses them in later chats; a small "Remembered …" line appears in the chat when it does. Notes live in `memory.md` in Croo's data folder as dated markdown. Code mode reads the notes too

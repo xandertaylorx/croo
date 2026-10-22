@@ -60,6 +60,20 @@ export interface WorkspaceInfo {
   chats: ChatInfo[]
 }
 
+export interface LocalModelInfo {
+  id: string
+  name: string
+  blurb: string
+  bytes: number
+  status: 'none' | 'downloading' | 'ready'
+  /** 0..1 while downloading. */
+  progress: number
+  error?: string
+  active: boolean
+  /** This Mac has enough memory for it. */
+  fits: boolean
+}
+
 export interface ProfileInfo {
   name: string
   provider: string
@@ -70,6 +84,8 @@ export interface ProfileInfo {
   keyHint: string
   keySource: 'saved' | 'env' | 'none'
   local: boolean
+  /** Run by Croo itself (the downloaded local model), managed from the local model card. */
+  engine: boolean
   /** Effort levels this provider's model accepts, empty when it has no such setting. */
   efforts: Effort[]
   /** What the model costs per million tokens, when known. */
@@ -176,6 +192,9 @@ export interface AppState {
   avatar: string
   update?: UpdateInfo
   profiles: ProfileInfo[]
+  /** Models Croo can download and run on this Mac, and whether the engine is part of this build. */
+  localModels: LocalModelInfo[]
+  engine: boolean
   workspaces: WorkspaceInfo[]
   /** Plain conversations (Chat mode), newest first. */
   chats: ChatInfo[]
@@ -225,6 +244,10 @@ export interface CrooApi {
   setMemory(on: boolean): Promise<void>
   removeMemory(index: number): Promise<void>
   clearMemory(): Promise<void>
+  downloadLocal(id: string): Promise<void>
+  cancelLocal(id: string): Promise<void>
+  useLocal(id: string): Promise<void>
+  deleteLocal(id: string): Promise<void>
   setUser(userName: string, avatar: string): Promise<void>
   listModels(profile?: string): Promise<{ models: ModelInfo[]; error?: string }>
   setModel(profile: string, model: string): Promise<void>

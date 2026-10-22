@@ -3555,3 +3555,33 @@ button.inst:hover {
   color: var(--text-3, var(--text-2));
   white-space: nowrap;
 }
+.local-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pill.soft {
+  margin-left: 8px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+.meter {
+  position: relative;
+  height: 6px;
+  margin: 8px 0 22px;
+  border-radius: 99px;
+  background: rgba(127, 127, 127, 0.2);
+}
+.meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+.meter small {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  color: var(--text-2);
+}

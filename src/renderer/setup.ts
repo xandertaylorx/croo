@@ -9,12 +9,47 @@ import { croo, installUpdate, store } from './store.js'
 
 type Choice = Preset | 'custom'
 
+const gb = (n: number) => `${(n / 1e9).toFixed(1)} GB`
+/** Download a model that Croo runs itself, on this Mac, with no account or key. */
+const localCardList = () =>
+  store.state.localModels.map((l) => {
+      const action =
+        l.status === 'ready'
+          ? l.active
+            ? h('span', { class: 'pill' }, 'Active')
+            : h('button', { class: 'btn small primary', type: 'button', onClick: () => void croo.useLocal(l.id) }, 'Use')
+          : l.status === 'downloading'
+            ? h('button', { class: 'btn small', type: 'button', onClick: () => void croo.cancelLocal(l.id) }, 'Pause')
+            : h('button', { class: 'btn small primary', type: 'button', disabled: !store.state.engine, onClick: () => void croo.downloadLocal(l.id) }, l.progress ? 'Resume' : `Download · ${gb(l.bytes)}`)
+      return h(
+        'div',
+        { class: `pcard local ${l.active ? 'active' : ''}` },
+        h('div', { class: 'pcard-top' }, h('div', { class: 'pcard-id' }, h('span', { class: 'pcard-name' }, l.name, h('span', { class: 'pill soft' }, 'On this Mac')), h('span', { class: 'pcard-host' }, 'Free, private, works offline. Saved in Croo’s data folder, so app updates never remove it.')), h('span', { class: 'push-right' }), action, l.status === 'ready' ? h('button', { class: 'icon-btn small danger', type: 'button', title: 'Delete the downloaded model', onClick: () => void croo.deleteLocal(l.id) }, icon('trash', 14)) : null),
+        h('p', { class: 'muted' }, l.blurb, l.fits ? '' : ' This Mac may not have enough memory for it.'),
+        l.status === 'downloading' ? h('div', { class: 'meter' }, h('div', { class: 'meter-fill', style: `width:${Math.round(l.progress * 100)}%` }), h('small', null, `${gb(l.progress * l.bytes)} of ${gb(l.bytes)}`)) : null,
+        l.error ? h('p', { class: 'form-error' }, l.error) : null,
+        !store.state.engine ? h('p', { class: 'form-error' }, 'The local engine is not part of this build. Run npm run engine, then restart.') : null,
+      )
+    })
+
+/** The model-download cards; kept live while a download runs, even on the first-run screen. */
+export function localCards(): HTMLElement {
+  const el = h('div', { class: 'local-cards' })
+  el.replaceChildren(...localCardList())
+  return el
+}
+
+export function refreshLocalCards() {
+  document.querySelectorAll('.local-cards').forEach((el) => el.replaceChildren(...localCardList()))
+}
+
 /** Pick a provider, paste a key. Used on first run and from Settings. */
 function providerSetup(done: () => void, cancel?: () => void): HTMLElement {
   const root = h('div', { class: 'setup' })
 
   const pick = () => {
     root.replaceChildren(
+      localCards(),
       h(
         'div',
         { class: 'provider-grid' },
@@ -136,7 +171,7 @@ function keyForm(name: string, close: () => void): HTMLElement {
   )
 }
 
-type Pane = 'providers' | 'general' | 'about'
+type Pane = 'providers' | 'general' | 'memory' | 'about'
 let pane: Pane = 'providers'
 
 const MODE_OPTIONS: { id: 'manual' | 'auto' | 'bypass'; label: string; icon: IconName; desc: string }[] = [
@@ -224,9 +259,11 @@ export function openSettings() {
   }
 
   const providersPane = () => {
-    const { profiles, demo } = store.state
+    const { demo } = store.state
+    const profiles = store.state.profiles.filter((p) => !p.engine)
     return [
-      head('Providers', 'Where Croo sends your messages. Bring your own key, or point it at a local model.'),
+      head('Providers', 'Where Croo sends your messages. Run a model on this Mac, bring your own key, or point it at a local server.'),
+      localCards(),
       profiles.length || demo
         ? h(
             'div',
@@ -242,18 +279,21 @@ export function openSettings() {
   /** Square, downscaled copy of the chosen picture so the config stays small. */
   const toAvatar = (file: File) =>
     new Promise<string>((resolve) => {
-      const url = URL.createObjectURL(file)
+      const reader = new FileReader()
+      reader.onerror = () => resolve('')
+      reader.onload = () => {
       const img = new Image()
       img.onload = () => {
         const size = Math.min(img.width, img.height)
         const c = document.createElement('canvas')
         c.width = c.height = 160
         c.getContext('2d')!.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 160, 160)
-        URL.revokeObjectURL(url)
         resolve(c.toDataURL('image/jpeg', 0.85))
       }
-      img.onerror = () => (URL.revokeObjectURL(url), resolve(''))
-      img.src = url
+      img.onerror = () => resolve('')
+      img.src = String(reader.result)
+      }
+      reader.readAsDataURL(file)
     })
 
   const profileRow = () => {
@@ -295,6 +335,8 @@ export function openSettings() {
     )
   }
 
+  const memoryPane = () => [head('Memory', 'What Croo remembers about you between chats.'), memorySection()]
+
   const generalPane = () => {
     const s = store.state
     const active = s.profiles.find((p) => p.active)
@@ -319,8 +361,6 @@ export function openSettings() {
         EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
       ),
       h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
-      h('div', { class: 'section-label' }, 'Memory'),
-      memorySection(),
       h('div', { class: 'section-label' }, 'Notifications'),
       h(
         'label',
@@ -371,12 +411,12 @@ export function openSettings() {
 
   const paint = () => {
     redraw = paint
-    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['about', 'About', 'file']]
+    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['memory', 'Memory', 'sparkle'], ['about', 'About', 'file']]
     nav.replaceChildren(
       h('div', { class: 'settings-title' }, 'Settings'),
       ...tabs.map(([id, label, ic]) => h('button', { class: `nav-btn ${pane === id ? 'on' : ''}`, type: 'button', 'aria-current': pane === id ? 'page' : undefined, onClick: () => ((pane = id), paint()) }, icon(ic, 16), label)),
     )
-    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : aboutPane()))
+    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : pane === 'memory' ? memoryPane() : aboutPane()))
   }
 
   const addProvider = () => {

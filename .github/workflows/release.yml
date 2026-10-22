@@ -22,6 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run engine
       - run: npm run build
       # This build is unsigned. For a signed, notarized build, run the release from a Mac that has the
       # Developer ID certificate (see README, "Releases and updates"), or add CSC_LINK and CSC_KEY_PASSWORD

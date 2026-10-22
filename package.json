@@ -1,7 +1,7 @@
 {
   "name": "croo",
   "productName": "Croo",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Croo: a minimal desktop AI coding agent with a frog in it. Bring your own API key.",
   "private": true,
   "type": "module",
@@ -11,15 +11,16 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "dev": "node scripts/build.mjs && node scripts/name-dev-electron.mjs && electron .",
+    "dev": "node scripts/fetch-engine.mjs && node scripts/build.mjs && node scripts/name-dev-electron.mjs && electron .",
     "start": "node scripts/name-dev-electron.mjs && electron .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "icon": "node scripts/make-icon.mjs",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --mac",
+    "engine": "node scripts/fetch-engine.mjs",
+    "pack": "npm run engine && npm run build && electron-builder --dir",
+    "dist": "npm run engine && npm run build && electron-builder --mac",
     "postinstall": "electron-builder install-app-deps",
-    "release": "npm run build && electron-builder --mac --publish always"
+    "release": "npm run engine && npm run build && electron-builder --mac --publish always"
   },
   "keywords": [
     "ai",
@@ -61,6 +62,12 @@
       "dist/**/*",
       "build/icon.png",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/llama",
+        "to": "llama"
+      }
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

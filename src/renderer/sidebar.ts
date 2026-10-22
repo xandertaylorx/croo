@@ -1,10 +1,8 @@
 import type { ChatInfo, WorkspaceInfo } from '../shared/ipc.js'
 import { h, icon } from './dom.js'
-import { Frog } from './frog.js'
 import { bus, croo, installUpdate, remember, store } from './store.js'
 
 const collapsed = new Set<string>(JSON.parse(remember.get('collapsed') ?? '[]'))
-const footFrog = new Frog(42)
 
 function toggle(path: string) {
   collapsed.has(path) ? collapsed.delete(path) : collapsed.add(path)
@@ -110,8 +108,6 @@ export function renderSidebar() {
   const root = document.getElementById('sidebar')!
   const scrollTop = root.querySelector<HTMLElement>('.sb-list')?.scrollTop ?? 0
   const { workspaces, chats } = store.state
-  const anyRunning = [...workspaces.flatMap((w) => w.chats), ...chats].some((c) => c.running)
-  footFrog.set(anyRunning ? 'working' : 'idle')
 
   const plain = store.mode === 'chat'
   const list = h(
@@ -134,7 +130,7 @@ export function renderSidebar() {
     h('div', { class: 'sb-top drag' }, segmented(), h('span', { class: 'push-right' }), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Search (⌘K)', onClick: () => bus.command('search') }, icon('search', 16)), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Hide sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.add('sidebar-hidden') }, icon('sidebar', 17))),
     list,
     ...(updateBanner() ? [updateBanner()!] : []),
-    h('div', { class: 'sb-foot' }, store.state.avatar ? h('img', { class: 'avatar', src: store.state.avatar, alt: '' }) : footFrog.el, h('span', { class: 'brand' }, store.state.userName || 'User'), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Settings (⌘,)', onClick: () => bus.settings() }, icon('gear', 17))),
+    h('div', { class: 'sb-foot' }, store.state.avatar ? h('img', { class: 'avatar', src: store.state.avatar, alt: '' }) : h('span', { class: 'avatar blank' }, (store.state.userName || 'U').trim().slice(0, 1).toUpperCase()), h('span', { class: 'brand' }, store.state.userName || 'User'), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Settings (⌘,)', onClick: () => bus.settings() }, icon('gear', 17))),
   )
   list.scrollTop = scrollTop
 }

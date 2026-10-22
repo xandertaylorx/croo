@@ -64,6 +64,8 @@ export interface Profile {
   type: ProviderType
   model: string
   baseUrl?: string
+  /** Set for the model Croo runs itself: the LOCAL_MODELS id. The base URL is filled in when the engine starts. */
+  engine?: string
   apiKey?: string
   /** The key encrypted with the OS keychain (written by the desktop app instead of apiKey). */
   apiKeyEnc?: string

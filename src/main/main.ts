@@ -12,6 +12,8 @@ import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, type
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
 import { rememberTool } from '../tools/index.js'
 import { demoProvider } from '../providers/demo.js'
+import { LOCAL_MODELS, localModel } from '../localmodels.js'
+import { cancelDownload, deleteModel, downloadState, engineInstalled, ensureEngine, initLocal, isReady, startDownload, stopEngine, touchEngine } from './local.js'
 import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
 import { PRESETS } from '../providers/presets.js'
@@ -141,16 +143,33 @@ function buildState(): AppState {
     configError,
     profiles: Object.entries(cfg.profiles).map(([name, p]) => ({
       name,
-      provider: p.baseUrl ? new URL(p.baseUrl).hostname.replace(/^api\./, '') : p.type,
+      provider: p.engine ? 'on this Mac' : p.baseUrl ? new URL(p.baseUrl).hostname.replace(/^api\./, '') : p.type,
       model: p.model,
       active: name === cfg.activeProfile,
       hasKey: usable(p),
       keyHint: p.apiKey ? maskKey(p.apiKey) : resolveApiKey(p) ? 'from environment' : '',
       keySource: p.apiKey ? 'saved' : resolveApiKey(p) ? 'env' : 'none',
       local: isLocalUrl(p.baseUrl),
+      engine: !!p.engine,
       efforts: effortLevels(p.type, p.model) ?? [],
       price: priceFor(p) ?? undefined,
     })),
+    localModels: LOCAL_MODELS.map((l) => {
+      const dl = downloadState(l.id)
+      const ready = isReady(l)
+      return {
+        id: l.id,
+        name: l.name,
+        blurb: l.blurb,
+        bytes: l.bytes,
+        status: ready ? ('ready' as const) : dl && !dl.error ? ('downloading' as const) : ('none' as const),
+        progress: dl ? dl.received / l.bytes : 0,
+        error: dl?.error,
+        active: ready && cfg.activeProfile !== '' && cfg.profiles[cfg.activeProfile]?.engine === l.id,
+        fits: os.totalmem() / 2 ** 30 >= l.minRamGB - 0.5,
+      }
+    }),
+    engine: engineInstalled(),
     workspaces: workspaces.map((p) => ({ path: p, name: path.basename(p) || p, missing: !isDir(p), instructions: instructionFiles(p), chats: chatsFor(p) })),
     chats: plainChats(),
   }
@@ -253,7 +272,9 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
 
   const run = async () => {
     try {
-      const provider = demo ? demoProvider() : createProvider(active![1])
+      let profile = active?.[1]
+      if (!demo && profile?.engine) profile = { ...profile, baseUrl: await ensureEngine(profile.engine, () => [...runtimes.values()].some((r) => r.abort)) }
+      const provider = demo ? demoProvider() : createProvider(profile!)
       await runTurn({
         provider,
         system: plain ? buildChatPrompt(new Date(), identity, userCtx) : buildSystemPrompt(session.cwd, new Date(), identity, userCtx),
@@ -292,6 +313,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
     } finally {
       rt.abort = undefined
       rt.pending = undefined
+      touchEngine()
       session.updatedAt = new Date().toISOString()
       if (!demo && messages.length) {
         saveSession(session)
@@ -523,6 +545,26 @@ function registerIpc() {
     cfg = { ...cfg, activeProfile: name }
     demo = false
     persist()
+    pushState()
+  })
+  const useLocalModel = (id: string) => {
+    const l = localModel(id)
+    if (!l || !isReady(l)) return
+    cfg = { ...cfg, profiles: { ...cfg.profiles, Local: { type: 'openai', model: l.name, baseUrl: 'http://127.0.0.1/v1', engine: l.id } }, activeProfile: 'Local' }
+    demo = false
+    persist()
+    pushState()
+  }
+  ipcMain.handle('local:download', (_e, id: string) => void startDownload(id, (l) => useLocalModel(l.id)))
+  ipcMain.handle('local:cancel', (_e, id: string) => cancelDownload(id))
+  ipcMain.handle('local:use', (_e, id: string) => useLocalModel(id))
+  ipcMain.handle('local:delete', (_e, id: string) => {
+    deleteModel(id)
+    const { Local: gone, ...rest } = cfg.profiles
+    if (gone?.engine === id) {
+      cfg = { ...cfg, profiles: rest, activeProfile: cfg.activeProfile === 'Local' ? (Object.keys(rest)[0] ?? '') : cfg.activeProfile }
+      persist()
+    }
     pushState()
   })
   ipcMain.handle('profile:remove', (_e, name: string) => {
@@ -776,6 +818,7 @@ else {
   app.setName('Croo')
   void app.whenReady().then(() => {
     loadAll()
+    initLocal(app.isPackaged ? path.join(process.resourcesPath, 'llama') : path.join(here, '..', '..', 'vendor', 'llama'), pushState)
     registerIpc()
     buildMenu()
     if (isMac) {
@@ -801,6 +844,7 @@ else {
     if (!isMac) app.quit()
   })
   app.on('before-quit', () => {
+    stopEngine()
     for (const rt of runtimes.values()) stopChat(rt)
     terminals.killAll()
     runner.stopAll()

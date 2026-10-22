@@ -64,6 +64,8 @@ curl -fsSL https://ai.crooli.com/install.sh | bash
 
 If you download the `.dmg` instead, macOS will say Croo is "damaged" because it isn't notarized; run `xattr -cr /Applications/Croo.app` once.
 
+**No key?** Download the built-in local model (Qwen3 4B, ~2.5 GB) from Settings → Providers or the first-run screen; Croo runs it on your Mac itself.
+
 First launch walks you through picking a provider and pasting a key, or choose **Just look around** for a scripted demo with no key. Build a distributable with `npm run dist` (a macOS `.dmg` and `.zip` in `release/`).
 
 ## Using it

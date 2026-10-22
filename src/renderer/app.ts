@@ -2,7 +2,7 @@ import type { AppState, ChatKind, Command } from '../shared/ipc.js'
 import { answerPending, currentChat, focusComposer, handleEvent, initRuns, refreshHeader, refreshMode, showChat } from './chat.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
-import { renderOnboarding, openSettings, refreshSettings } from './setup.js'
+import { renderOnboarding, openSettings, refreshLocalCards, refreshSettings } from './setup.js'
 import { closeSide, initSide, setFolder } from './side.js'
 import { renderSidebar } from './sidebar.js'
 import { clearTerminal, closeTerminal, initTerminal, newTab, stepTab, terminalFocused, toggleTerminal } from './terminal.js'
@@ -118,6 +118,7 @@ function onState(next: AppState) {
   refreshHeader()
   refreshMode()
   refreshSettings()
+  refreshLocalCards()
   if (added && !added.missing && next.ready && before.workspaces.length && store.mode === 'code') void newChat(added.path, 'code')
   else renderMain()
 }
