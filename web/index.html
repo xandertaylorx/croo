@@ -39,18 +39,22 @@
     <p class="lede">Croo is a small, quiet desktop app for working with AI on your code. Each folder gets its own chats. You decide what it may do on its own, and you see everything it does.</p>
 
     <div class="cta">
-      <a class="btn primary" id="dl-main" href="https://github.com/xandertaylorx/croo/releases/latest">
+      <button class="btn primary big" id="copy-install" type="button" data-copy="#cmd-install">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M5 15.5V6.5A1.5 1.5 0 0 1 6.5 5h9"/></svg>
+        <span class="lbl">Copy Mac install command</span><em class="rec">Recommended</em>
+      </button>
+      <a class="btn ghost" id="dl-main" href="https://github.com/xandertaylorx/croo/releases/latest">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
-        <span>Download for macOS</span><small id="dl-version"></small>
+        <span>Download</span><small id="dl-version"></small>
       </a>
-      <a class="btn ghost" href="https://github.com/xandertaylorx/croo" rel="noopener">View on GitHub</a>
+      <a class="btn ghost" href="https://github.com/xandertaylorx/croo" rel="noopener">GitHub</a>
     </div>
 
-    <div class="cmd" role="group" aria-label="Run from source">
+    <div class="cmd" role="group" aria-label="Install with Terminal">
       <span class="prompt" aria-hidden="true">$</span>
-      <code id="cmd-text">git clone https://github.com/xandertaylorx/croo &amp;&amp; cd croo &amp;&amp; npm i &amp;&amp; npm run dev</code>
-      <button class="copy" type="button" data-copy="#cmd-text" aria-label="Copy command">Copy</button>
+      <code id="cmd-install">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
     </div>
+    <p class="why"><b>Paste it into Terminal.</b> Installing this way skips macOS’s “Croo is damaged and can’t be opened” warning, which downloads from a browser trigger because Croo isn’t notarized (that needs a paid Apple account). No settings to dig through.</p>
     <p class="fine">Bring your own API key, or a local model. No account. No telemetry. No backend.</p>
   </section>
 
@@ -98,24 +102,30 @@
   <section id="download" class="section narrow">
     <p class="label">Get Croo</p>
     <h2>Download</h2>
+    <div class="install-card">
+      <span class="rec">Recommended</span>
+      <h3>Install from Terminal</h3>
+      <p>One line installs the latest Croo and opens it. It <b>bypasses the macOS “damaged app” warning</b> that browser downloads trigger, so there is nothing to click through. Apple Silicon Macs.</p>
+      <div class="cmd" role="group" aria-label="Install with Terminal">
+        <span class="prompt" aria-hidden="true">$</span>
+        <code id="cmd-install-2">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
+        <button class="copy" type="button" data-copy="#cmd-install-2" aria-label="Copy command">Copy</button>
+      </div>
+      <p class="fine left"><span id="platform-note"></span></p>
+    </div>
+    <p class="or">or download the app yourself</p>
     <div class="release" id="release">
       <div class="release-top">
         <div><span class="ver" id="rel-version">Latest release</span><span class="date" id="rel-date"></span></div>
         <a class="notes" id="rel-notes" href="https://github.com/xandertaylorx/croo/releases">Release notes</a>
       </div>
       <div class="dl-row">
-        <a class="btn primary" id="dl-arm" href="https://github.com/xandertaylorx/croo/releases/latest"><span>Download for Apple Silicon</span><small id="dl-arm-size"></small></a>
+        <a class="btn ghost" id="dl-arm" href="https://github.com/xandertaylorx/croo/releases/latest"><span>Download for Apple Silicon</span><small id="dl-arm-size"></small></a>
         <a class="btn ghost" id="dl-intel" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>Intel Mac</span></a>
         <a class="btn ghost" id="dl-zip" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>.zip</span></a>
       </div>
-      <p class="fine left">Easiest: paste the command below into Terminal. It installs Croo and opens it with no macOS warning. <span id="platform-note"></span></p>
+      <p class="fine left">If macOS says Croo is “damaged” after a browser download, it isn’t: run <code>xattr -cr /Applications/Croo.app</code> once, or use the install command above.</p>
     </div>
-    <div class="cmd" role="group" aria-label="Install with Terminal">
-      <span class="prompt" aria-hidden="true">$</span>
-      <code id="cmd-install">curl -fsSL https://ai.crooli.com/install.sh | bash</code>
-      <button class="copy" type="button" data-copy="#cmd-install" aria-label="Copy command">Copy</button>
-    </div>
-    <p class="fine left">Downloaded the <code>.dmg</code> instead? Croo isn't notarized (that needs a paid Apple account), so macOS says it's "damaged". Run <code>xattr -cr /Applications/Croo.app</code> once, or use the command above.</p>
     <p class="or">or build it from source</p>
     <div class="cmd" role="group" aria-label="Build from source">
       <span class="prompt" aria-hidden="true">$</span>

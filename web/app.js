@@ -54,16 +54,23 @@ if (!/Mac/i.test(navigator.platform || navigator.userAgent)) {
 }
 
 // copy buttons
-document.querySelectorAll('.copy').forEach((btn) => {
+document.querySelectorAll('[data-copy]').forEach((btn) => {
+  const label = btn.querySelector('.lbl') || btn
+  const original = label.textContent
   btn.addEventListener('click', async () => {
     const text = $(btn.dataset.copy).textContent
     try {
       await navigator.clipboard.writeText(text)
-      btn.textContent = 'Copied'
+      label.textContent = btn.querySelector('.lbl') ? 'Copied. Paste it in Terminal' : 'Copied'
     } catch {
-      btn.textContent = 'Press ⌘C'
+      // No clipboard access: select the command so ⌘C works.
+      const range = document.createRange()
+      range.selectNodeContents($(btn.dataset.copy))
+      getSelection().removeAllRanges()
+      getSelection().addRange(range)
+      label.textContent = 'Press ⌘C to copy'
     }
-    setTimeout(() => (btn.textContent = 'Copy'), 1400)
+    setTimeout(() => (label.textContent = original), 1800)
   })
 })
 
