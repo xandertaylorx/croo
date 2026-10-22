@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+
+- **In-app updates**: "Update and restart" (bottom left or Settings → About) downloads the new version, replaces Croo and relaunches it, no manual download. Falls back to the download page if Croo can't write to its own folder
+- One-line installer: `curl -fsSL https://ai.crooli.com/install.sh | bash`
+
 ## 0.9.0
 
 - **Profile**: set your name and a picture in Settings → General; they show bottom left in place of "Croo" (falls back to the frog and "User")

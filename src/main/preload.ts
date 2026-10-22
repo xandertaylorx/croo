@@ -21,6 +21,7 @@ const api: CrooApi = {
   setUser: (userName, avatar) => invoke('user:set', userName, avatar),
   setNotify: (on) => invoke('notify:set', on),
   setPrice: (profile, input, output) => invoke('profile:price', profile, input, output),
+  installUpdate: () => invoke('update:install'),
   checkUpdate: () => invoke('update:check'),
   onOpenChat: (cb) => void ipcRenderer.on('open-chat', (_e, id: string) => cb(id)),
   stop: (chatId) => invoke('chat:stop', chatId),

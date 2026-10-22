@@ -22,7 +22,7 @@ import { searchChats } from '../chatsearch.js'
 import { expandMentions, fileBlock, searchFiles } from '../mentions.js'
 import { priceFor } from '../pricing.js'
 import { readAttachments } from './attachments.js'
-import { checkLatest } from './updates.js'
+import { checkLatest, GITHUB_REPO, runningBundle, stageUpdate } from './updates.js'
 import { gitCommit, gitConnect, gitDiff, gitInit, gitPublish, gitPull, gitPush, gitStatus } from './git.js'
 import { Runner } from './runner.js'
 import { Terminals } from './terminal.js'
@@ -467,6 +467,16 @@ function registerIpc() {
     cfg = { ...cfg, profiles: { ...cfg.profiles, [name]: next } }
     persist()
     pushState()
+  })
+  ipcMain.handle('update:install', async () => {
+    const bundle = isMac && app.isPackaged ? runningBundle() : undefined
+    if (!update?.zip || !bundle) {
+      void shell.openExternal(update?.url ?? update?.page ?? `https://github.com/${GITHUB_REPO}/releases`)
+      return { ok: true as const }
+    }
+    const r = await stageUpdate(update.zip, bundle)
+    if (r.ok) setTimeout(() => app.quit(), 300)
+    return r
   })
   ipcMain.handle('update:check', async () => {
     const r = await checkLatest(app.getVersion())

@@ -16,6 +16,13 @@ export interface ReleaseAsset {
   browser_download_url: string
 }
 
+/** The macOS zip build for this machine: what the app downloads to replace itself. */
+export function pickZip(assets: ReleaseAsset[], arch: string): ReleaseAsset | undefined {
+  const zips = assets.filter((a) => /\.zip$/i.test(a.name))
+  const wantArm = arch === 'arm64'
+  return zips.find((a) => (wantArm ? /arm64/i.test(a.name) : !/arm64/i.test(a.name)))
+}
+
 /** The installer for this machine, if the release has one; otherwise the caller falls back to the release page. */
 export function pickAsset(assets: ReleaseAsset[], platform: string, arch: string): ReleaseAsset | undefined {
   const ext = platform === 'darwin' ? /\.dmg$/i : platform === 'win32' ? /\.exe$/i : /\.AppImage$/i

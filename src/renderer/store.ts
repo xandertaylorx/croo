@@ -70,3 +70,9 @@ export const remember = {
     } catch {}
   },
 }
+
+/** Download the update, swap it in and relaunch. Returns an error message if it could not. */
+export async function installUpdate(): Promise<string | undefined> {
+  const r = await croo.installUpdate()
+  return r.ok ? undefined : r.error
+}

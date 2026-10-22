@@ -1,7 +1,7 @@
 import type { ChatInfo, WorkspaceInfo } from '../shared/ipc.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
-import { bus, croo, remember, store } from './store.js'
+import { bus, croo, installUpdate, remember, store } from './store.js'
 
 const collapsed = new Set<string>(JSON.parse(remember.get('collapsed') ?? '[]'))
 const footFrog = new Frog(42)
@@ -61,7 +61,14 @@ function updateBanner(): HTMLElement | null {
   return h(
     'div',
     { class: 'update', 'data-tip': u.notes ? u.notes.split('\n').filter(Boolean).slice(0, 3).join(' · ').slice(0, 160) : 'A newer version is available' },
-    h('button', { class: 'update-main no-drag', type: 'button', onClick: () => void croo.openExternal(u.url) }, icon('download', 15), h('span', { class: 'update-text' }, h('b', null, `Croo ${u.version} is out`), h('small', null, 'Click to download'))),
+    h('button', { class: 'update-main no-drag', type: 'button', onClick: async (e: Event) => {
+      const btn = e.currentTarget as HTMLElement
+      const small = btn.querySelector('small')!
+      btn.setAttribute('disabled', '')
+      small.textContent = u.zip ? 'Updating, Croo will restart…' : 'Opening download…'
+      const err = await installUpdate()
+      if (err) (btn.removeAttribute('disabled'), (small.textContent = err))
+    } }, icon('download', 15), h('span', { class: 'update-text' }, h('b', null, `Croo ${u.version} is out`), h('small', null, u.zip ? 'Click to update' : 'Click to download'))),
     h('button', { class: 'row-btn show no-drag', type: 'button', title: 'Not now', onClick: () => (remember.set('dismissedUpdate', u.version), renderSidebar()) }, icon('x', 13)),
   )
 }

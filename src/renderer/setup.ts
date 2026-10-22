@@ -5,7 +5,7 @@ import type { AppState } from '../shared/ipc.js'
 import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
 import type { IconName } from './dom.js'
-import { croo, store } from './store.js'
+import { croo, installUpdate, store } from './store.js'
 
 type Choice = Preset | 'custom'
 
@@ -313,9 +313,15 @@ export function openSettings() {
   const updateRow = () => {
     const u = store.state.update
     const status = h('span', { class: 'muted' }, u ? `Version ${u.version} is available.` : 'You are on the latest version.')
-    const btn = h('button', { class: 'btn small', type: 'button' }, u ? 'Download' : 'Check for updates')
+    const btn = h('button', { class: 'btn small', type: 'button' }, u ? (u.zip ? 'Update and restart' : 'Download') : 'Check for updates')
     btn.addEventListener('click', async () => {
-      if (u) return void croo.openExternal(u.url)
+      if (u) {
+        btn.disabled = true
+        status.textContent = u.zip ? 'Updating, Croo will restart…' : 'Opening download…'
+        const err = await installUpdate()
+        if (err) (btn.disabled = false, (status.textContent = err))
+        return
+      }
       btn.disabled = true
       status.textContent = 'Checking…'
       const r = await croo.checkUpdate()

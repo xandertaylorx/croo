@@ -112,6 +112,8 @@ export interface UpdateInfo {
   /** Where "Get it" goes: the installer for this machine if the release has one, else the release page. */
   url: string
   page: string
+  /** macOS only: the zip the app can download and swap in for itself. */
+  zip?: string
   notes?: string
 }
 
@@ -206,6 +208,8 @@ export interface CrooApi {
   searchChats(query: string): Promise<import('../chatsearch.js').ChatHit[]>
   setNotify(on: boolean): Promise<void>
   setPrice(profile: string, input?: number, output?: number): Promise<void>
+  /** Download the update, replace this app and relaunch. Resolves only on failure (on success the app quits). */
+  installUpdate(): Promise<Result>
   checkUpdate(): Promise<{ ok: true; current: string; update?: UpdateInfo } | { ok: false; error: string }>
   onOpenChat(cb: (id: string) => void): void
   stop(chatId: string): Promise<void>

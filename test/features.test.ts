@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { costOf, formatCost, priceFor } from '../src/pricing.js'
-import { compareVersions, pickAsset } from '../src/version.js'
+import { compareVersions, pickAsset, pickZip } from '../src/version.js'
 import { expandMentions, scorePath, searchFiles } from '../src/mentions.js'
 import { searchChats } from '../src/chatsearch.js'
 import { newSession, saveSession, loadSession, listSessions } from '../src/session.js'
@@ -129,5 +129,17 @@ describe('attachments', () => {
     expect(toOpenAIMessages('s', [user])[1].content).toEqual([{ type: 'text', text: 'what is this?' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } }])
     expect(toGeminiContents([user])[0].parts).toEqual([{ text: 'what is this?' }, { inlineData: { mimeType: 'image/png', data: 'QUJD' } }])
     expect(toOpenAIMessages('s', [{ role: 'user', content: 'plain' }])[1].content).toBe('plain')
+  })
+})
+
+describe('pickZip', () => {
+  it('picks the zip for this architecture and ignores blockmaps', () => {
+    const assets = [
+      { name: 'Croo-1.0.0-arm64-mac.zip.blockmap', browser_download_url: 'm' },
+      { name: 'Croo-1.0.0-arm64-mac.zip', browser_download_url: 'a' },
+      { name: 'Croo-1.0.0-mac.zip', browser_download_url: 'x' },
+    ]
+    expect(pickZip(assets, 'arm64')?.browser_download_url).toBe('a')
+    expect(pickZip(assets, 'x64')?.browser_download_url).toBe('x')
   })
 })
