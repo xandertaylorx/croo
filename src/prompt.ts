@@ -16,7 +16,7 @@ export function loadProjectInstructions(cwd: string): string | null {
 
 export function buildSystemPrompt(cwd: string, now = new Date()): string {
   const parts = [
-    `You are Croo, a small, friendly, open-source coding agent running in the user's terminal. You are working in the directory: ${cwd}`,
+    `You are Croo, a small, friendly, open-source coding agent running in a desktop app. You are working in the folder: ${cwd}`,
     `Platform: ${process.platform}. Date: ${now.toISOString().slice(0, 10)}.`,
     [
       'Guidelines:',

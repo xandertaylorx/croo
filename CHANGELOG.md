@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+Croo is now a desktop app instead of a terminal CLI.
+
+- Electron app (macOS first, Windows later) with a minimal sidebar of folders, each with its own chats
+- Streaming markdown replies, tool rows, and inline diff / command approval cards
+- The frog hops while tools run, looks around while thinking, and celebrates when done
+- In-app provider setup with key checking; demo mode with no key
+- Light and dark follow the system; native vibrancy sidebar on macOS
+- Removed the terminal UI, the `croo` command and the npm package; core agent, providers, tools and saved chats are unchanged
+
 ## 0.1.4
 
 - Setup checks the provider's model list and falls back if the default model isn't available for your key
