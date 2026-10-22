@@ -18,6 +18,7 @@ const api: CrooApi = {
   onAttach: (cb) => void attachListeners.push(cb),
   searchFiles: (cwd, query) => invoke('fs:search', cwd, query),
   searchChats: (query) => invoke('search:chats', query),
+  setUser: (userName, avatar) => invoke('user:set', userName, avatar),
   setNotify: (on) => invoke('notify:set', on),
   setPrice: (profile, input, output) => invoke('profile:price', profile, input, output),
   checkUpdate: () => invoke('update:check'),

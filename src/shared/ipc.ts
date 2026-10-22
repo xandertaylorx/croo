@@ -167,6 +167,9 @@ export interface AppState {
   permissionMode: PermissionMode
   effort: Effort
   notify: boolean
+  userName: string
+  /** Small image data URL, or empty. */
+  avatar: string
   update?: UpdateInfo
   profiles: ProfileInfo[]
   workspaces: WorkspaceInfo[]
@@ -213,6 +216,7 @@ export interface CrooApi {
   startDemo(): Promise<void>
   setMode(mode: PermissionMode): Promise<void>
   setEffort(effort: Effort): Promise<void>
+  setUser(userName: string, avatar: string): Promise<void>
   listModels(profile?: string): Promise<{ models: ModelInfo[]; error?: string }>
   setModel(profile: string, model: string): Promise<void>
   updateKey(profile: string, apiKey: string): Promise<Result>

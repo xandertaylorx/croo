@@ -239,6 +239,41 @@ export function openSettings() {
     ]
   }
 
+  /** Square, downscaled copy of the chosen picture so the config stays small. */
+  const toAvatar = (file: File) =>
+    new Promise<string>((resolve) => {
+      const url = URL.createObjectURL(file)
+      const img = new Image()
+      img.onload = () => {
+        const size = Math.min(img.width, img.height)
+        const c = document.createElement('canvas')
+        c.width = c.height = 160
+        c.getContext('2d')!.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 160, 160)
+        URL.revokeObjectURL(url)
+        resolve(c.toDataURL('image/jpeg', 0.85))
+      }
+      img.onerror = () => (URL.revokeObjectURL(url), resolve(''))
+      img.src = url
+    })
+
+  const profileRow = () => {
+    const s = store.state
+    const name = h('input', { class: 'input', type: 'text', placeholder: 'Your name', maxlength: 40, value: s.userName, 'aria-label': 'Your name' })
+    name.addEventListener('change', () => void croo.setUser(name.value, store.state.avatar))
+    const file = h('input', { type: 'file', accept: 'image/*', hidden: true })
+    file.addEventListener('change', async () => {
+      const f = file.files?.[0]
+      const pic = f ? await toAvatar(f) : ''
+      if (pic) await croo.setUser(name.value, pic)
+    })
+    return h(
+      'div',
+      { class: 'profile-row' },
+      s.avatar ? h('img', { class: 'avatar big', src: s.avatar, alt: '' }) : h('span', { class: 'avatar big blank' }, (s.userName || 'U').slice(0, 1).toUpperCase()),
+      h('div', { class: 'profile-fields' }, name, h('div', { class: 'profile-btns' }, h('button', { class: 'btn small', type: 'button', onClick: () => file.click() }, s.avatar ? 'Change picture' : 'Choose picture'), s.avatar ? h('button', { class: 'btn small', type: 'button', onClick: () => void croo.setUser(name.value, '') }, 'Remove') : null, file)),
+    )
+  }
+
   const generalPane = () => {
     const s = store.state
     const active = s.profiles.find((p) => p.active)
@@ -246,6 +281,8 @@ export function openSettings() {
     notifySwitch.checked = s.notify
     return [
       head('General', 'Defaults for every chat.'),
+      h('div', { class: 'section-label' }, 'Profile'),
+      profileRow(),
       h('div', { class: 'section-label' }, 'Permissions'),
       h(
         'div',

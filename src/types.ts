@@ -84,4 +84,7 @@ export interface Config {
   /** System notification when a turn finishes or needs approval while the window is in the background. */
   notify: boolean
   effort: import('./effort.js').Effort
+  /** Shown bottom left; both optional. `avatar` is a small image data URL. */
+  userName?: string
+  avatar?: string
 }

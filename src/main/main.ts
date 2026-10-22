@@ -131,6 +131,8 @@ function buildState(): AppState {
     permissionMode: cfg.permissionMode,
     effort: cfg.effort,
     notify: cfg.notify,
+    userName: cfg.userName ?? '',
+    avatar: cfg.avatar ?? '',
     update,
     configError,
     profiles: Object.entries(cfg.profiles).map(([name, p]) => ({
@@ -437,6 +439,13 @@ function registerIpc() {
     const live = [...runtimes.values()].filter((r) => r.session.messages.length).map((r) => ({ id: r.session.id, cwd: r.session.cwd, title: titleFrom(r.session.messages), updatedAt: r.session.updatedAt, kind: (r.session.kind === 'chat' ? 'chat' : 'code') as 'chat' | 'code' }))
     const metas = [...new Map([...saved.values(), ...live].map((m) => [m.id, m])).values()]
     return searchChats(metas, String(query ?? ''), (id) => runtimes.get(id)?.session ?? loadSession(id))
+  })
+  ipcMain.handle('user:set', (_e, userName: string, avatar: string) => {
+    const name = String(userName ?? '').trim().slice(0, 40)
+    const pic = typeof avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(avatar) && avatar.length < 400_000 ? avatar : ''
+    cfg = { ...cfg, userName: name, avatar: pic }
+    persist()
+    pushState()
   })
   ipcMain.handle('notify:set', (_e, on: boolean) => {
     cfg = { ...cfg, notify: !!on }

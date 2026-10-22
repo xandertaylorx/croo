@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0
+
+- **Profile**: set your name and a picture in Settings → General; they show bottom left in place of "Croo" (falls back to the frog and "User")
+- Development builds now show "Croo" in the macOS menu bar instead of "Electron"
+
 ## 0.8.0
 
 - **Website** in `web/`, a static site: live latest-release download button, install commands, screenshots and features

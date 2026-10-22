@@ -127,7 +127,7 @@ export function renderSidebar() {
     h('div', { class: 'sb-top drag' }, segmented(), h('span', { class: 'push-right' }), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Search (⌘K)', onClick: () => bus.command('search') }, icon('search', 16)), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Hide sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.add('sidebar-hidden') }, icon('sidebar', 17))),
     list,
     ...(updateBanner() ? [updateBanner()!] : []),
-    h('div', { class: 'sb-foot' }, footFrog.el, h('span', { class: 'brand' }, 'Croo'), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Settings (⌘,)', onClick: () => bus.settings() }, icon('gear', 17))),
+    h('div', { class: 'sb-foot' }, store.state.avatar ? h('img', { class: 'avatar', src: store.state.avatar, alt: '' }) : footFrog.el, h('span', { class: 'brand' }, store.state.userName || 'User'), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Settings (⌘,)', onClick: () => bus.settings() }, icon('gear', 17))),
   )
   list.scrollTop = scrollTop
 }
