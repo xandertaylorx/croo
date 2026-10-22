@@ -25,4 +25,16 @@ export const LOCAL_MODELS: LocalModel[] = [
   },
 ]
 
-export const localModel = (id: string) => LOCAL_MODELS.find((m) => m.id === id)
+/** Speech-to-text for the microphone button: whisper base, 5-bit, many languages. */
+export const VOICE_MODEL: LocalModel = {
+  id: 'whisper-base',
+  name: 'Whisper base',
+  blurb: 'Turns your voice into text on this Mac.',
+  url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin',
+  file: 'ggml-base-q5_1.bin',
+  bytes: 59_707_625,
+  sha256: '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898',
+  minRamGB: 4,
+}
+
+export const localModel = (id: string) => [...LOCAL_MODELS, VOICE_MODEL].find((m) => m.id === id)

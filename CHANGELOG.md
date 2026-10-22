@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0
+
+- **Voice input**: a mic button in the message box. While you speak a live waveform scrolls by; press ✓ (or Return) and your words are typed in. Speech is turned into text on your Mac with Whisper (built in, 57 MB voice model downloaded the first time, nothing uploaded). Esc cancels
+- **AI commit messages**: a ✦ button in the Git panel's message box writes the message from the selected files' diffs using the model you have selected
+- **Export chat**: a button in the chat header saves the conversation as markdown
+- First run now leads with "Start free, on this Mac" (the built-in local model), with your own key as the alternative
+
 ## 0.11.1
 
 - Fixed the "Thinking…" row glitching when you hover or click it while the model is reasoning

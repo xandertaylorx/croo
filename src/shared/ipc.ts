@@ -74,6 +74,15 @@ export interface LocalModelInfo {
   fits: boolean
 }
 
+export interface VoiceInfo {
+  /** whisper is part of this build. */
+  engine: boolean
+  status: 'none' | 'downloading' | 'ready'
+  progress: number
+  bytes: number
+  error?: string
+}
+
 export interface ProfileInfo {
   name: string
   provider: string
@@ -195,6 +204,7 @@ export interface AppState {
   /** Models Croo can download and run on this Mac, and whether the engine is part of this build. */
   localModels: LocalModelInfo[]
   engine: boolean
+  voice: VoiceInfo
   workspaces: WorkspaceInfo[]
   /** Plain conversations (Chat mode), newest first. */
   chats: ChatInfo[]
@@ -244,6 +254,15 @@ export interface CrooApi {
   setMemory(on: boolean): Promise<void>
   removeMemory(index: number): Promise<void>
   clearMemory(): Promise<void>
+  downloadVoice(): Promise<void>
+  /** Ask macOS for the microphone; false when it was refused. */
+  micAccess(): Promise<boolean>
+  /** 16 kHz mono WAV in, text out. */
+  transcribe(wav: ArrayBuffer): Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  /** Save a chat as a markdown file (asks where). Resolves true if saved. */
+  exportChat(name: string, text: string): Promise<boolean>
+  /** Draft a commit message for these files with the selected model. */
+  suggestCommit(cwd: string, paths: string[]): Promise<{ ok: true; message: string } | { ok: false; error: string }>
   downloadLocal(id: string): Promise<void>
   cancelLocal(id: string): Promise<void>
   useLocal(id: string): Promise<void>

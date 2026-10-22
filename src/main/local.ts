@@ -44,9 +44,9 @@ async function sha256(file: string): Promise<string> {
 }
 
 /** Download with resume (a .part file is kept if you cancel or lose the connection), then verify the checksum. */
-export async function startDownload(id: string, onDone: (m: LocalModel) => void): Promise<void> {
-  const m = localModel(id)
-  if (!m || downloads.has(id) || isReady(m)) return
+export async function startDownload(m: LocalModel, onDone: (m: LocalModel) => void): Promise<void> {
+  const id = m.id
+  if (downloads.has(id) || isReady(m)) return
   fs.mkdirSync(modelsDir(), { recursive: true })
   const part = modelFile(m) + '.part'
   const have = fs.existsSync(part) ? fs.statSync(part).size : 0

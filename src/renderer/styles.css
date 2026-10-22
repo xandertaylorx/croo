@@ -3585,3 +3585,132 @@ button.inst:hover {
   left: 0;
   color: var(--text-2);
 }
+
+/* ---------- AI commit message ---------- */
+.git-msg-wrap {
+  position: relative;
+}
+.git-msg-wrap .git-msg {
+  padding-right: 40px;
+}
+.git-ai {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+}
+.git-ai:hover:not(:disabled) {
+  background: var(--hover);
+}
+.git-ai:disabled {
+  color: var(--text-3);
+}
+
+/* ---------- voice input ---------- */
+.composer .input-area {
+  padding-right: 96px;
+}
+.mic {
+  position: absolute;
+  right: 50px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+}
+.mic:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.mic.busy {
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+.voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 12px;
+}
+.voice-bar[hidden] {
+  display: none;
+}
+.composer.recording .input-area,
+.composer.recording .attach,
+.composer.recording .mic,
+.composer.recording .send,
+.composer.recording .attach-tray {
+  display: none;
+}
+.composer.recording {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+.wave {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  color: var(--accent);
+}
+.voice-time {
+  min-width: 34px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.voice-state {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.voice-bar.busy .wave {
+  opacity: 0.25;
+}
+.voice-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.hero-local {
+  width: 100%;
+  max-width: 520px;
+  margin: 8px auto 4px;
+  text-align: left;
+}
+.hero-local h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.hero-local .pcard {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+.or-line {
+  margin: 14px 0 10px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}

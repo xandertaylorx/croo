@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, safeStorage, shell, systemPreferences } from 'electron'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -13,7 +13,9 @@ import { clearMemory, loadMemory, removeMemory } from '../memory.js'
 import { rememberTool } from '../tools/index.js'
 import { demoProvider } from '../providers/demo.js'
 import { fixPath } from './shellenv.js'
-import { LOCAL_MODELS, localModel } from '../localmodels.js'
+import { LOCAL_MODELS, VOICE_MODEL, localModel } from '../localmodels.js'
+import { commitPrompt, cleanCommitMessage, COMMIT_SYSTEM } from '../commitmsg.js'
+import { initVoice, transcribe, voiceEngineInstalled } from './voice.js'
 import { cancelDownload, deleteModel, downloadState, engineInstalled, ensureEngine, initLocal, isReady, startDownload, stopEngine, touchEngine } from './local.js'
 import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
@@ -171,6 +173,10 @@ function buildState(): AppState {
       }
     }),
     engine: engineInstalled(),
+    voice: (() => {
+      const dl = downloadState(VOICE_MODEL.id)
+      return { engine: voiceEngineInstalled(), status: isReady(VOICE_MODEL) ? ('ready' as const) : dl && !dl.error ? ('downloading' as const) : ('none' as const), progress: dl ? dl.received / VOICE_MODEL.bytes : 0, bytes: VOICE_MODEL.bytes, error: dl?.error }
+    })(),
     workspaces: workspaces.map((p) => ({ path: p, name: path.basename(p) || p, missing: !isDir(p), instructions: instructionFiles(p), chats: chatsFor(p) })),
     chats: plainChats(),
   }
@@ -556,7 +562,45 @@ function registerIpc() {
     persist()
     pushState()
   }
-  ipcMain.handle('local:download', (_e, id: string) => void startDownload(id, (l) => useLocalModel(l.id)))
+  ipcMain.handle('local:download', (_e, id: string) => {
+    const l = localModel(id)
+    if (l && LOCAL_MODELS.includes(l)) void startDownload(l, (done) => useLocalModel(done.id))
+  })
+  ipcMain.handle('voice:download', () => void startDownload(VOICE_MODEL, () => {}))
+  ipcMain.handle('voice:mic', async () => {
+    if (process.platform !== 'darwin') return true
+    if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true
+    return systemPreferences.askForMediaAccess('microphone')
+  })
+  ipcMain.handle('voice:transcribe', (_e, wav: ArrayBuffer) => (wav instanceof ArrayBuffer && wav.byteLength < 50_000_000 ? transcribe(Buffer.from(wav)) : { ok: false as const, error: 'That recording is too long.' }))
+  ipcMain.handle('chat:export', async (_e, name: string, text: string) => {
+    if (!win || typeof text !== 'string') return false
+    const r = await dialog.showSaveDialog(win, { title: 'Export chat', defaultPath: path.join(app.getPath('documents'), String(name || 'chat.md')), filters: [{ name: 'Markdown', extensions: ['md'] }] })
+    if (r.canceled || !r.filePath) return false
+    fs.writeFileSync(r.filePath, text)
+    return true
+  })
+  ipcMain.handle('git:suggest', async (_e, cwd: string, paths: string[]) => {
+    inWorkspace(cwd)
+    paths.forEach((p) => safePath(cwd, p))
+    if (!paths.length) return { ok: false as const, error: 'Select some files first.' }
+    if (demo) return { ok: true as const, message: 'Update project files\n\n- Demo mode: connect a model to get real suggestions' }
+    const active = activeProfile()
+    if (!active || !usable(active[1])) return { ok: false as const, error: 'Add a provider in Settings first.' }
+    try {
+      const untracked = new Set((await gitStatus(cwd)).files.filter((f) => f.index === '?').map((f) => f.path))
+      const diffs = await Promise.all(paths.slice(0, 20).map(async (p) => `### ${p}\n${await gitDiff(cwd, p, untracked.has(p))}`))
+      let profile = active[1]
+      if (profile.engine) profile = { ...profile, baseUrl: await ensureEngine(profile.engine, () => [...runtimes.values()].some((r) => r.abort)) }
+      const res = await createProvider(profile).chat({ system: COMMIT_SYSTEM, messages: [{ role: 'user', content: commitPrompt(paths, diffs.join('\n\n')) }], tools: [], signal: AbortSignal.timeout(90_000) }, () => {})
+      const message = cleanCommitMessage(res.text)
+      return message ? { ok: true as const, message } : { ok: false as const, error: 'The model returned nothing. Try again.' }
+    } catch (e: any) {
+      return { ok: false as const, error: String(e?.message ?? e).slice(0, 200) }
+    } finally {
+      touchEngine()
+    }
+  })
   ipcMain.handle('local:cancel', (_e, id: string) => cancelDownload(id))
   ipcMain.handle('local:use', (_e, id: string) => useLocalModel(id))
   ipcMain.handle('local:delete', (_e, id: string) => {
@@ -820,6 +864,7 @@ else {
   void app.whenReady().then(() => {
     fixPath()
     loadAll()
+    initVoice(app.isPackaged ? path.join(process.resourcesPath, 'whisper') : path.join(here, '..', '..', 'vendor', 'whisper'))
     initLocal(app.isPackaged ? path.join(process.resourcesPath, 'llama') : path.join(here, '..', '..', 'vendor', 'llama'), pushState)
     registerIpc()
     buildMenu()

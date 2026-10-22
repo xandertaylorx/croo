@@ -11,6 +11,8 @@ import { attachmentsFromFiles, shrinkImage } from './attach.js'
 import { costOf, formatCost } from '../cost.js'
 import { bus, croo, store, type ChatView } from './store.js'
 import type { PermissionMode } from '../shared/ipc.js'
+import { voiceControls } from './voice.js'
+import { chatToMarkdown, exportName } from '../exportmd.js'
 
 const VERBS: Record<string, [string, string, IconName]> = {
   read_file: ['Reading', 'Read', 'file'],
@@ -782,6 +784,20 @@ export function focusComposer() {
 const allChats = () => [...store.state.workspaces.flatMap((w) => w.chats), ...store.state.chats]
 
 /** The header title follows the chat's name as it changes (it is named after the first message). */
+let voiceRefresh: (() => void) | null = null
+export const refreshVoice = () => voiceRefresh?.()
+
+/** Save this chat as a markdown file. */
+async function exportCurrent() {
+  if (!m) return
+  const v = m.view
+  const title = document.querySelector('.chat-title')?.textContent || 'Chat'
+  const folder = store.state.workspaces.find((w) => w.path === v.cwd)
+  const model = store.state.profiles.find((p) => p.active)?.model
+  const saved = await croo.exportChat(exportName(title), chatToMarkdown(v.items, { title, folder: v.kind === 'code' ? folder?.name : undefined, model }))
+  if (saved) setStatus(v, 'idle', '', 'Chat exported')
+}
+
 export function refreshHeader() {
   if (!m) return
   const title = allChats().find((c) => c.id === m!.view.id)?.title
@@ -804,6 +820,8 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const scroll = h('div', { class: 'scroll' }, thread)
   const status = h('div', { class: 'status' })
   const input = h('textarea', { class: 'input-area', rows: 1, placeholder: plain ? 'Message Croo…' : `Ask Croo about ${folder?.name ?? 'this folder'}…`, spellcheck: 'true' })
+  const voice = voiceControls(input, (t) => setStatus(view, 'idle', '', t))
+  voiceRefresh = voice.refresh
   const send = h('button', { class: 'send', type: 'button', onClick: () => (running(view) ? void croo.stop(view.id) : void submit()) })
   const frog = new Frog(42)
 
@@ -908,10 +926,11 @@ export function showChat(view: ChatView, root: HTMLElement) {
         h('button', { class: 'icon-btn no-drag show-when-hidden', type: 'button', title: 'Show sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.remove('sidebar-hidden') }, icon('sidebar', 17)),
         h('span', { class: 'chat-title' }, title),
         h('span', { class: 'chat-folder' }, plain ? '' : (folder?.name ?? '')),
+        h('span', { class: 'push-right' }),
+        h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Export chat as markdown', onClick: () => void exportCurrent() }, icon('share', 17)),
         ...(plain
           ? []
           : [
-              h('span', { class: 'push-right' }),
               h('button', { class: 'icon-btn no-drag btn-files', type: 'button', title: 'Files (⌘⇧E)', onClick: () => bus.files() }, icon('folder', 17)),
               h('button', { class: 'icon-btn no-drag btn-git', type: 'button', title: 'Git (⌘⇧G)', 'data-count': String(store.gitCount), onClick: () => bus.git() }, icon('branch', 17)),
               h('button', { class: 'icon-btn no-drag btn-browser', type: 'button', title: 'Browser (⌘⇧B)', onClick: () => bus.browser() }, icon('globe', 17)),
@@ -923,7 +942,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
     ),
   )
   composerWrap.append(
-    h('div', { class: 'composer' }, tray, input, h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('paperclip', 17)), send),
+    h('div', { class: 'composer' }, tray, input, voice.bar, h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('paperclip', 17)), voice.mic, send),
     h(
       'div',
       { class: 'composer-hint' },

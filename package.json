@@ -1,7 +1,7 @@
 {
   "name": "croo",
   "productName": "Croo",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Croo: a minimal desktop AI coding agent with a frog in it. Bring your own API key.",
   "private": true,
   "type": "module",
@@ -67,6 +67,10 @@
       {
         "from": "vendor/llama",
         "to": "llama"
+      },
+      {
+        "from": "vendor/whisper",
+        "to": "whisper"
       }
     ],
     "mac": {
@@ -76,7 +80,10 @@
         "zip"
       ],
       "icon": "build/icon.png",
-      "hardenedRuntime": true
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Croo uses the microphone only when you press the mic button to dictate a message."
+      }
     },
     "win": {
       "target": [

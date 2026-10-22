@@ -11,13 +11,11 @@ const stamp = path.join(out, '.tag')
 
 if (fs.existsSync(path.join(out, 'llama-server')) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8') === LLAMA_TAG) {
   console.log(`engine ${LLAMA_TAG} already in ${out}`)
-  process.exit(0)
-}
-if (process.platform !== 'darwin') {
+} else if (process.platform !== 'darwin') {
   console.log('Skipping the local engine: only the macOS build is bundled.')
-  process.exit(0)
-}
+} else await fetchLlama()
 
+async function fetchLlama() {
 const url = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/llama-${LLAMA_TAG}-bin-macos-arm64.tar.gz`
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-engine-'))
 console.log(`fetching ${url}`)
@@ -35,3 +33,29 @@ for (const f of fs.readdirSync(src)) {
 fs.writeFileSync(stamp, LLAMA_TAG)
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`engine ready in ${out}`)
+}
+
+// ---- whisper.cpp: the speech-to-text engine behind voice input (built from source, one static binary) ----
+const WHISPER_TAG = 'v1.9.5'
+const wout = 'vendor/whisper'
+const wstamp = path.join(wout, '.tag')
+if (fs.existsSync(path.join(wout, 'whisper-cli')) && fs.existsSync(wstamp) && fs.readFileSync(wstamp, 'utf8') === WHISPER_TAG) {
+  console.log(`whisper ${WHISPER_TAG} already in ${wout}`)
+} else {
+  try {
+    execFileSync('cmake', ['--version'], { stdio: 'ignore' })
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-whisper-'))
+    const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' })
+    sh('git', ['clone', '--depth', '1', '--branch', WHISPER_TAG, 'https://github.com/ggml-org/whisper.cpp', work])
+    sh('cmake', ['-B', 'build', '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=OFF', '-DGGML_METAL=ON', '-DGGML_METAL_EMBED_LIBRARY=ON', '-DWHISPER_BUILD_TESTS=OFF', '-DWHISPER_BUILD_SERVER=OFF'], work)
+    sh('cmake', ['--build', 'build', '-j', '--config', 'Release', '--target', 'whisper-cli'], work)
+    fs.rmSync(wout, { recursive: true, force: true })
+    fs.mkdirSync(wout, { recursive: true })
+    fs.copyFileSync(path.join(work, 'build', 'bin', 'whisper-cli'), path.join(wout, 'whisper-cli'))
+    fs.writeFileSync(wstamp, WHISPER_TAG)
+    fs.rmSync(work, { recursive: true, force: true })
+    console.log(`whisper ready in ${wout}`)
+  } catch (e) {
+    console.log(`Skipping voice input (could not build whisper.cpp: ${e.message}). Install cmake and run npm run engine.`)
+  }
+}

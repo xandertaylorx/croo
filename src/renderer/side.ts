@@ -257,6 +257,8 @@ const gitPanel = (() => {
   const diffs = new Map<string, string>()
   let message = ''
   let busy: '' | 'commit' | 'push' | 'pull' = ''
+  let suggesting = false
+  let aiBtn: HTMLButtonElement
   let note: { ok: boolean; text: string } | null = null
   let publishing = false
   let publishCard: HTMLElement
@@ -324,6 +326,21 @@ const gitPanel = (() => {
     }
     await load()
     refreshFiles()
+  }
+
+  /** Ask the selected model to write the commit message from the chosen files' diffs. */
+  const suggest = async () => {
+    if (!cwd || suggesting || busy || !chosen().length) return
+    suggesting = true
+    note = null
+    paintFoot()
+    const res = await croo.suggestCommit(cwd, chosen())
+    suggesting = false
+    if (res.ok) {
+      message = res.message
+      if (box) (box.value = message, (box.rows = Math.min(8, Math.max(2, message.split('\n').length))))
+    } else note = { ok: false, text: res.error }
+    paintFoot()
   }
 
   const toggleOpen = async (f: GitFile) => {
@@ -452,7 +469,9 @@ const gitPanel = (() => {
     const n = chosen().length
     const repo = !!status?.repo
     foot.hidden = !repo
-    commitBtn.disabled = !!busy || !message.trim() || n === 0
+    commitBtn.disabled = !!busy || suggesting || !message.trim() || n === 0
+    aiBtn.disabled = !!busy || suggesting || n === 0
+    aiBtn.replaceChildren(suggesting ? h('span', { class: 'spinner' }) : icon('sparkle', 15))
     commitBtn.replaceChildren(busy === 'commit' ? h('span', { class: 'spinner' }) : icon('check', 14), `Commit${n ? ` (${n})` : ''}`)
     const ahead = status?.ahead ?? 0
     pushBtn.disabled = !!busy || !!(status?.upstream && ahead === 0)
@@ -488,12 +507,13 @@ const gitPanel = (() => {
       onKeydown: (e: KeyboardEvent) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && (e.preventDefault(), void run('commit')),
     })
     box.value = message
+    aiBtn = h('button', { class: 'git-ai', type: 'button', title: 'Write the message with AI', onClick: () => void suggest() })
     commitBtn = h('button', { class: 'btn primary grow', type: 'button', title: 'Commit the selected files (⌘↵)', onClick: () => void run('commit') })
     pushBtn = h('button', { class: 'btn grow', type: 'button', onClick: () => (status && !status.remotes.length ? ((publishing = !publishing), paintFoot()) : void run('push')) })
     pullBtn = h('button', { class: 'btn icon', type: 'button', title: 'Pull (fast-forward only)', onClick: () => void run('pull') })
     noteEl = h('pre', { class: 'git-note', hidden: true })
     publishCard = h('div', { class: 'git-publish', hidden: true })
-    foot = h('div', { class: 'git-foot' }, publishCard, box, h('div', { class: 'git-actions' }, commitBtn, pushBtn, pullBtn), noteEl)
+    foot = h('div', { class: 'git-foot' }, publishCard, h('div', { class: 'git-msg-wrap' }, box, aiBtn), h('div', { class: 'git-actions' }, commitBtn, pushBtn, pullBtn), noteEl)
     const el = h(
       'div',
       { class: 'side-col' },

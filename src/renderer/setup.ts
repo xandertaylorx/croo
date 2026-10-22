@@ -49,7 +49,6 @@ function providerSetup(done: () => void, cancel?: () => void): HTMLElement {
 
   const pick = () => {
     root.replaceChildren(
-      localCards(),
       h(
         'div',
         { class: 'provider-grid' },
@@ -119,6 +118,8 @@ export function renderOnboarding(root: HTMLElement) {
         h('h1', null, 'Welcome to Croo'),
         h('p', { class: 'lede' }, 'A small coding agent with a frog in it. Bring your own API key or a local model. No account, no telemetry.'),
         store.state.configError ? h('p', { class: 'form-error' }, store.state.configError) : null,
+        h('div', { class: 'hero-local' }, h('h2', null, 'Start free, on this Mac'), localCards()),
+        h('p', { class: 'or-line' }, 'or use your own key'),
         providerSetup(() => {}),
         h('button', { class: 'link', type: 'button', onClick: () => void croo.startDemo() }, 'Just look around (demo, no key)'),
       ),
@@ -337,6 +338,18 @@ export function openSettings() {
 
   const memoryPane = () => [head('Memory', 'What Croo remembers about you between chats.'), memorySection()]
 
+  const voiceRow = () => {
+    const v = store.state.voice
+    const action = !v.engine
+      ? h('span', { class: 'muted' }, 'Not in this build')
+      : v.status === 'ready'
+        ? h('span', { class: 'pill' }, 'Ready')
+        : v.status === 'downloading'
+          ? h('span', { class: 'muted' }, `${Math.round(v.progress * 100)}%`)
+          : h('button', { class: 'btn small primary', type: 'button', onClick: () => void croo.downloadVoice() }, `Download · ${Math.round(v.bytes / 1e6)} MB`)
+    return h('div', { class: 'switch-row' }, h('span', null, 'Dictate with the mic button', h('small', null, 'Speech is turned into text on this Mac with Whisper. Nothing is uploaded.')), action, v.error ? h('p', { class: 'form-error' }, v.error) : null)
+  }
+
   const generalPane = () => {
     const s = store.state
     const active = s.profiles.find((p) => p.active)
@@ -361,6 +374,8 @@ export function openSettings() {
         EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
       ),
       h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
+      h('div', { class: 'section-label' }, 'Voice input'),
+      voiceRow(),
       h('div', { class: 'section-label' }, 'Notifications'),
       h(
         'label',
