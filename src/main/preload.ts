@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppState, ChatEvent, Command, CrooApi, RunExit } from '../shared/ipc.js'
+import type { AppState, Attachment, ChatEvent, Command, CrooApi, RunExit } from '../shared/ipc.js'
 
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args)
+
+const attachListeners: ((a: Attachment[], skipped: string[]) => void)[] = []
 
 const api: CrooApi = {
   getState: () => invoke('state:get'),
@@ -10,7 +12,16 @@ const api: CrooApi = {
   newChat: (cwd, kind) => invoke('chat:new', cwd, kind),
   openChat: (id) => invoke('chat:open', id),
   deleteChat: (id) => invoke('chat:delete', id),
-  send: (chatId, text) => invoke('chat:send', chatId, text),
+  send: (chatId, text, attachments) => invoke('chat:send', chatId, text, attachments),
+  rewind: (chatId, ordinal) => invoke('chat:rewind', chatId, ordinal),
+  pickAttachments: () => invoke('attach:pick'),
+  onAttach: (cb) => void attachListeners.push(cb),
+  searchFiles: (cwd, query) => invoke('fs:search', cwd, query),
+  searchChats: (query) => invoke('search:chats', query),
+  setNotify: (on) => invoke('notify:set', on),
+  setPrice: (profile, input, output) => invoke('profile:price', profile, input, output),
+  checkUpdate: () => invoke('update:check'),
+  onOpenChat: (cb) => void ipcRenderer.on('open-chat', (_e, id: string) => cb(id)),
   stop: (chatId) => invoke('chat:stop', chatId),
   answer: (chatId, confirmId, answer) => invoke('chat:answer', chatId, confirmId, answer),
   addProfile: (req) => invoke('profile:add', req),
@@ -51,10 +62,15 @@ const api: CrooApi = {
 }
 contextBridge.exposeInMainWorld('croo', api)
 
-// Dropping a folder anywhere on the window adds it. File paths are only readable here.
+// Dropping onto the message box attaches files; dropping anywhere else adds a folder.
+// File paths are only readable here in the preload.
 window.addEventListener('dragover', (e) => e.preventDefault())
 window.addEventListener('drop', (e) => {
   e.preventDefault()
   const paths = [...(e.dataTransfer?.files ?? [])].map((f) => webUtils.getPathForFile(f)).filter(Boolean)
-  if (paths.length) void invoke('workspace:addPaths', paths)
+  if (!paths.length) return
+  const onComposer = (e.target as HTMLElement | null)?.closest?.('.composer-wrap, .thread, .scroll')
+  void invoke('drop:paths', paths, !!onComposer).then((r: { attachments: Attachment[]; skipped: string[] }) => {
+    if (r.attachments.length || r.skipped.length) attachListeners.forEach((cb) => cb(r.attachments, r.skipped))
+  })
 })

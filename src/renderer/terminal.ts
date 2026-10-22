@@ -34,6 +34,11 @@ let body: HTMLElement
 const early = new Map<string, string[]>() // output that arrives before its tab is registered
 
 const isOpen = () => !panel.hidden
+/** ⌘K clears the terminal when you are in it (the search palette takes it everywhere else). */
+export function clearTerminal() {
+  active?.term.clear()
+}
+
 export const terminalFocused = () => isOpen() && panel.contains(document.activeElement)
 
 function label(t: Tab): string {

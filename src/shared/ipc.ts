@@ -13,8 +13,15 @@ export type PreviewDto =
   | { kind: 'read'; tool: string; summary: string }
 
 /** What a chat shows. `confirm` only ever exists live, never in a saved transcript. */
+export interface AttachmentView {
+  name: string
+  kind: 'image' | 'file'
+  /** Images only: a data: URL to show. */
+  dataUrl?: string
+}
+
 export type Item =
-  | { kind: 'user'; text: string }
+  | { kind: 'user'; text: string; attachments?: AttachmentView[] }
   | { kind: 'assistant'; text: string; streaming?: boolean }
   | { kind: 'thinking'; text: string; done: boolean; seconds?: number }
   | { kind: 'tool'; name: string; summary: string; status: ToolStatus; result?: string }
@@ -63,6 +70,8 @@ export interface ProfileInfo {
   local: boolean
   /** Effort levels this provider's model accepts, empty when it has no such setting. */
   efforts: Effort[]
+  /** What the model costs per million tokens, when known. */
+  price?: { input: number; output: number; source: 'built-in' | 'custom' | 'local' }
 }
 
 export interface ModelInfo {
@@ -86,6 +95,25 @@ export interface FsFile {
 }
 
 export type ChatKind = 'chat' | 'code'
+
+/** Something sent along with a message. Images carry a data: URL, text files their text. */
+export interface Attachment {
+  name: string
+  kind: 'image' | 'file'
+  mime?: string
+  dataUrl?: string
+  text?: string
+}
+
+export interface UpdateInfo {
+  version: string
+  /** Where "Get it" goes: the installer for this machine if the release has one, else the release page. */
+  url: string
+  page: string
+  notes?: string
+}
+
+export type { ChatHit } from '../chatsearch.js'
 
 export interface GitFile {
   path: string
@@ -136,6 +164,8 @@ export interface AppState {
   demo: boolean
   permissionMode: PermissionMode
   effort: Effort
+  notify: boolean
+  update?: UpdateInfo
   profiles: ProfileInfo[]
   workspaces: WorkspaceInfo[]
   /** Plain conversations (Chat mode), newest first. */
@@ -153,7 +183,7 @@ export interface AddProfileRequest {
 
 export type Result = { ok: true } | { ok: false; error: string }
 
-export type Command = 'newChat' | 'addFolder' | 'settings' | 'toggleSidebar' | 'toggleTerminal' | 'toggleFiles' | 'toggleBrowser' | 'toggleGit' | 'modeChat' | 'modeCode'
+export type Command = 'newChat' | 'addFolder' | 'settings' | 'toggleSidebar' | 'toggleTerminal' | 'toggleFiles' | 'toggleBrowser' | 'toggleGit' | 'search' | 'modeChat' | 'modeCode'
 
 export interface CrooApi {
   getState(): Promise<AppState>
@@ -162,7 +192,17 @@ export interface CrooApi {
   newChat(cwd: string, kind: ChatKind): Promise<string>
   openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[] } | null>
   deleteChat(id: string): Promise<void>
-  send(chatId: string, text: string): Promise<Result>
+  send(chatId: string, text: string, attachments?: Attachment[]): Promise<Result>
+  /** Cut the chat back to before the n-th user message (0-based) so it can be edited or sent again. */
+  rewind(chatId: string, ordinal: number): Promise<{ ok: true; text: string; attachments: Attachment[] } | { ok: false; error: string }>
+  pickAttachments(): Promise<{ attachments: Attachment[]; skipped: string[] }>
+  onAttach(cb: (a: Attachment[], skipped: string[]) => void): void
+  searchFiles(cwd: string, query: string): Promise<string[]>
+  searchChats(query: string): Promise<import('../chatsearch.js').ChatHit[]>
+  setNotify(on: boolean): Promise<void>
+  setPrice(profile: string, input?: number, output?: number): Promise<void>
+  checkUpdate(): Promise<{ ok: true; current: string; update?: UpdateInfo } | { ok: false; error: string }>
+  onOpenChat(cb: (id: string) => void): void
   stop(chatId: string): Promise<void>
   answer(chatId: string, confirmId: string, answer: 'y' | 'n' | 'a'): Promise<void>
   addProfile(req: AddProfileRequest): Promise<Result>

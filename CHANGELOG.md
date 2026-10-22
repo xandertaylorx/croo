@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- **Attachments**: paste or drop images and files into the message box, or use the paperclip; images are scaled down before sending and work with Claude, OpenAI-compatible and Gemini models
+- **`@file` mentions** with autocomplete: the file is sent along with the message
+- **Edit and retry**: edit any message and resend, or retry the last reply
+- **`⌘K` search** across chats (titles and contents), files and actions; a search button in the sidebar
+- **Cost estimate** beside time and tokens; built-in Claude prices, your own prices per provider in Settings, local models free
+- **Notifications** when a task finishes or needs your OK while the window is in the background (Settings → General)
+- **Update notice** at the bottom left when a newer GitHub release exists; a release workflow builds and publishes the macOS app when you push a `v*` tag
+
 ## 0.6.0
 
 - **Time and tokens**: a live clock and token count while the agent works, with the final tally and an input/output breakdown on hover

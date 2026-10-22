@@ -1,11 +1,12 @@
-import type { AppState, ChatKind } from '../shared/ipc.js'
+import type { AppState, ChatKind, Command } from '../shared/ipc.js'
 import { answerPending, currentChat, focusComposer, handleEvent, initRuns, refreshHeader, refreshMode, showChat } from './chat.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
 import { renderOnboarding, openSettings, refreshSettings } from './setup.js'
 import { closeSide, initSide, setFolder } from './side.js'
 import { renderSidebar } from './sidebar.js'
-import { closeTerminal, initTerminal, newTab, stepTab, terminalFocused, toggleTerminal } from './terminal.js'
+import { clearTerminal, closeTerminal, initTerminal, newTab, stepTab, terminalFocused, toggleTerminal } from './terminal.js'
+import { openPalette } from './palette.js'
 import { initTooltips } from './tooltip.js'
 import { bus, croo, remember, store, type ChatView } from './store.js'
 
@@ -162,7 +163,7 @@ async function boot() {
   initTerminal({ getCwd: currentFolder })
   croo.onState(onState)
   croo.onEvent(handleEvent)
-  croo.onCommand((c) => {
+  const runCommand = (c: Command) => {
     const app = document.getElementById('app')!
     if (c === 'newChat') {
       const cwd = currentFolder()
@@ -170,6 +171,7 @@ async function boot() {
       else if (cwd) void newChat(cwd, 'code')
       else void croo.addWorkspace()
     } else if (c === 'addFolder') void croo.addWorkspace()
+    else if (c === 'search') terminalFocused() ? clearTerminal() : openPalette()
     else if (c === 'settings') openSettings()
     else if (c === 'toggleTerminal') bus.terminal()
     else if (c === 'toggleFiles') store.mode === 'code' && bus.files()
@@ -182,7 +184,10 @@ async function boot() {
       remember.set('sidebar', app.classList.contains('sidebar-hidden') ? 'hidden' : 'shown')
       if (!app.classList.contains('sidebar-hidden')) focusComposer()
     }
-  })
+  }
+  bus.command = runCommand
+  croo.onCommand(runCommand)
+  croo.onOpenChat((id) => void openChat(id))
 
   renderSidebar()
   renderMain()

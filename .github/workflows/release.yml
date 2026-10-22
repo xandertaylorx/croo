@@ -1,0 +1,33 @@
+name: Release
+
+# Publish a build to GitHub Releases when a version tag is pushed:
+#   git tag v0.7.0 && git push origin v0.7.0
+# The app checks the latest release and shows "Croo x.y.z is out" at the bottom left of the sidebar.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # Unsigned until a Developer ID certificate is added as CSC_LINK / CSC_KEY_PASSWORD secrets
+      # (plus APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID to notarize).
+      - run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK == '' && 'false' || 'true' }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

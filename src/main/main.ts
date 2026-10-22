@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, safeStorage, shell } from 'electron'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -14,14 +14,19 @@ import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
 import { PRESETS } from '../providers/presets.js'
 import { deleteSession, listSessions, loadSession, newSession, saveSession, titleFrom, type Session, type SessionMeta } from '../session.js'
-import type { AddProfileRequest, AppState, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result, RunKind } from '../shared/ipc.js'
+import type { AddProfileRequest, AppState, Attachment, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result, RunKind, UpdateInfo } from '../shared/ipc.js'
 import { Ignore } from '../tools/ignore.js'
 import { safePath } from '../tools/index.js'
-import { clip, toItems, toPreviewDto } from '../transcript.js'
+import { clip, rewindTo, toItems, toPreviewDto } from '../transcript.js'
+import { searchChats } from '../chatsearch.js'
+import { expandMentions, fileBlock, searchFiles } from '../mentions.js'
+import { priceFor } from '../pricing.js'
+import { readAttachments } from './attachments.js'
+import { checkLatest } from './updates.js'
 import { gitCommit, gitConnect, gitDiff, gitInit, gitPublish, gitPull, gitPush, gitStatus } from './git.js'
 import { Runner } from './runner.js'
 import { Terminals } from './terminal.js'
-import type { Config, PermissionMode, Profile } from '../types.js'
+import type { AttachedFile, Config, ImageAtt, Msg, PermissionMode, Profile } from '../types.js'
 import { loadWorkspaces, saveWorkspaces } from '../workspaces.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -33,6 +38,7 @@ let win: BrowserWindow | null = null
 let cfg: Config = defaultConfig()
 let configError: string | undefined
 let demo = false
+let update: UpdateInfo | undefined
 let workspaces: string[] = []
 let saved = new Map<string, SessionMeta>()
 
@@ -124,6 +130,8 @@ function buildState(): AppState {
     demo,
     permissionMode: cfg.permissionMode,
     effort: cfg.effort,
+    notify: cfg.notify,
+    update,
     configError,
     profiles: Object.entries(cfg.profiles).map(([name, p]) => ({
       name,
@@ -135,6 +143,7 @@ function buildState(): AppState {
       keySource: p.apiKey ? 'saved' : resolveApiKey(p) ? 'env' : 'none',
       local: isLocalUrl(p.baseUrl),
       efforts: effortLevels(p.type, p.model) ?? [],
+      price: priceFor(p) ?? undefined,
     })),
     workspaces: workspaces.map((p) => ({ path: p, name: path.basename(p) || p, missing: !isDir(p), instructions: instructionFiles(p), chats: chatsFor(p) })),
     chats: plainChats(),
@@ -184,14 +193,50 @@ function runtime(id: string): Runtime | null {
   return rt
 }
 
-function startTurn(chatId: string, rt: Runtime, text: string) {
+/** Tell the user a turn needs them, but only when the window is not already in front of them. */
+function notifyAway(chatId: string, session: Session, body: string) {
+  if (!cfg.notify || !Notification.isSupported() || (win && win.isFocused() && !win.isMinimized())) return
+  const folder = session.kind === 'chat' ? '' : path.basename(session.cwd)
+  const n = new Notification({ title: titleFrom(session.messages), subtitle: folder || undefined, body })
+  n.on('click', () => {
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    send('open-chat', chatId)
+  })
+  n.show()
+  if (isMac) app.dock?.bounce('informational')
+}
+
+/** What goes to the model for a typed message: its text, any @mentioned or attached files inline, and images alongside. */
+function buildUserMessage(text: string, atts: Attachment[], plain: boolean, cwd: string): Msg {
+  const init = !plain && /^\/init(\s|$)/.test(text.trim())
+  if (init) {
+    const extra = text.trim().slice(5).trim()
+    return { role: 'user', content: `${INIT_PROMPT}${extra ? `\n\nExtra guidance: ${extra}` : ''}`, display: text.trim() }
+  }
+  const images: ImageAtt[] = atts
+    .filter((a) => a.kind === 'image' && a.dataUrl?.startsWith('data:'))
+    .slice(0, 8)
+    .map((a) => ({ name: a.name, mime: a.mime ?? a.dataUrl!.slice(5, a.dataUrl!.indexOf(';')), data: a.dataUrl!.slice(a.dataUrl!.indexOf(',') + 1) }))
+  const attached: AttachedFile[] = atts.filter((a) => a.kind === 'file' && typeof a.text === 'string').slice(0, 8).map((a) => ({ name: a.name, text: a.text!.slice(0, 200_000) }))
+  const mentioned = plain ? [] : expandMentions(text, cwd).filter((m) => !attached.some((a) => a.name === m.name))
+  const content = text + [...attached, ...mentioned].map(fileBlock).join('')
+  const msg: Extract<Msg, { role: 'user' }> = { role: 'user', content }
+  if (content !== text) msg.display = text
+  if (images.length) msg.images = images
+  if (attached.length) msg.attached = attached
+  return msg
+}
+
+function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[] = []) {
   const { session } = rt
   const messages = session.messages
   const before = messages.length
   const plain = session.kind === 'chat'
   // "/init" sends the long research prompt; the chat only ever shows "/init".
-  const init = !plain && /^\/init(\s|$)/.test(text.trim())
-  messages.push(init ? { role: 'user', content: `${INIT_PROMPT}${text.trim().slice(5) ? `\n\nExtra guidance: ${text.trim().slice(5).trim()}` : ''}`, display: text.trim() } : { role: 'user', content: text })
+  messages.push(buildUserMessage(text, atts, plain, session.cwd))
   const ac = (rt.abort = new AbortController())
   const t0 = Date.now()
   const active = activeProfile()
@@ -220,17 +265,20 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
             new Promise((resolve) => {
               const id = Math.random().toString(36).slice(2)
               rt.pending = { id, resolve }
+              notifyAway(chatId, session, `Needs your OK: ${preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary}`)
               emit({ chatId, type: 'confirm', id, name, summary: preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary, preview: toPreviewDto(preview) })
             }),
           onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output }),
         },
       })
       emit({ chatId, type: 'done', seconds: (Date.now() - t0) / 1000 })
+      notifyAway(chatId, session, `Finished in ${Math.max(1, Math.round((Date.now() - t0) / 1000))}s`)
     } catch (e: any) {
       if (e instanceof Cancelled) emit({ chatId, type: 'cancelled' })
       else {
         messages.length = before
         emit({ chatId, type: 'error', message: e?.message ?? String(e) })
+        notifyAway(chatId, session, 'Something went wrong')
       }
     } finally {
       rt.abort = undefined
@@ -332,15 +380,91 @@ function registerIpc() {
     deleteSession(id)
     pushState()
   })
-  ipcMain.handle('chat:send', (_e, chatId: string, text: string): Result => {
+  ipcMain.handle('chat:send', (_e, chatId: string, text: string, atts: Attachment[] = []): Result => {
     const rt = runtime(chatId)
     if (!rt) return { ok: false, error: 'That chat no longer exists.' }
     if (rt.abort) return { ok: false, error: 'Croo is still working on the last message.' }
     if (rt.session.kind !== 'chat' && !isDir(rt.session.cwd)) return { ok: false, error: `The folder ${rt.session.cwd} no longer exists.` }
     const active = activeProfile()
     if (!demo && !(active && usable(active[1]))) return { ok: false, error: 'Add a provider in Settings first.' }
-    startTurn(chatId, rt, text)
+    startTurn(chatId, rt, text, Array.isArray(atts) ? atts : [])
     return { ok: true }
+  })
+  ipcMain.handle('chat:rewind', (_e, chatId: string, ordinal: number) => {
+    const rt = runtime(chatId)
+    if (!rt) return { ok: false as const, error: 'That chat no longer exists.' }
+    if (rt.abort) return { ok: false as const, error: 'Stop the current turn first.' }
+    const m = rewindTo(rt.session.messages, ordinal)
+    if (!m) return { ok: false as const, error: 'Could not find that message.' }
+    rt.session.updatedAt = new Date().toISOString()
+    if (rt.session.messages.length && !demo) {
+      saveSession(rt.session)
+      saved.set(rt.session.id, { id: rt.session.id, cwd: rt.session.cwd, title: rt.session.title ?? titleFrom(rt.session.messages), updatedAt: rt.session.updatedAt, kind: rt.session.kind === 'chat' ? 'chat' : 'code' })
+    } else if (!rt.session.messages.length) {
+      deleteSession(rt.session.id)
+      saved.delete(rt.session.id)
+    }
+    pushState()
+    const attachments: Attachment[] = [
+      ...(m.images ?? []).map((i) => ({ name: i.name, kind: 'image' as const, mime: i.mime, dataUrl: `data:${i.mime};base64,${i.data}` })),
+      ...(m.attached ?? []).map((f) => ({ name: f.name, kind: 'file' as const, text: f.text })),
+    ]
+    return { ok: true as const, text: m.display ?? m.content, attachments }
+  })
+  ipcMain.handle('attach:pick', async () => {
+    if (!win) return { attachments: [], skipped: [] }
+    const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], title: 'Attach files', buttonLabel: 'Attach' })
+    return r.canceled ? { attachments: [], skipped: [] } : readAttachments(r.filePaths)
+  })
+  // Something was dropped on the window: folders are added to the sidebar, files become attachments if they landed on the chat.
+  ipcMain.handle('drop:paths', (_e, paths: string[], onChat: boolean) => {
+    const all = Array.isArray(paths) ? paths : []
+    const dirs = all.filter(isDir)
+    if (dirs.length) addWorkspaces(dirs)
+    return onChat ? readAttachments(all.filter((p) => !isDir(p))) : { attachments: [], skipped: [] }
+  })
+  ipcMain.handle('fs:search', (_e, cwd: string, query: string) => {
+    if (!workspaces.includes(cwd)) return []
+    try {
+      return searchFiles(cwd, String(query ?? ''))
+    } catch {
+      return []
+    }
+  })
+  ipcMain.handle('search:chats', (_e, query: string) => {
+    const live = [...runtimes.values()].filter((r) => r.session.messages.length).map((r) => ({ id: r.session.id, cwd: r.session.cwd, title: titleFrom(r.session.messages), updatedAt: r.session.updatedAt, kind: (r.session.kind === 'chat' ? 'chat' : 'code') as 'chat' | 'code' }))
+    const metas = [...new Map([...saved.values(), ...live].map((m) => [m.id, m])).values()]
+    return searchChats(metas, String(query ?? ''), (id) => runtimes.get(id)?.session ?? loadSession(id))
+  })
+  ipcMain.handle('notify:set', (_e, on: boolean) => {
+    cfg = { ...cfg, notify: !!on }
+    persist()
+    pushState()
+  })
+  ipcMain.handle('profile:price', (_e, name: string, input?: number, output?: number) => {
+    const p = cfg.profiles[name]
+    if (!p) return
+    const next = { ...p }
+    const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0
+    if (ok(input) || ok(output)) {
+      next.inputPerMTok = ok(input) ? input : 0
+      next.outputPerMTok = ok(output) ? output : 0
+    } else {
+      delete next.inputPerMTok
+      delete next.outputPerMTok
+    }
+    cfg = { ...cfg, profiles: { ...cfg.profiles, [name]: next } }
+    persist()
+    pushState()
+  })
+  ipcMain.handle('update:check', async () => {
+    const r = await checkLatest(app.getVersion())
+    if (r.ok) {
+      update = r.update
+      pushState()
+      return { ok: true as const, current: app.getVersion(), update: r.update }
+    }
+    return r
   })
   ipcMain.handle('chat:stop', (_e, chatId: string) => {
     const rt = runtimes.get(chatId)
@@ -561,6 +685,7 @@ function buildMenu() {
       label: 'File',
       submenu: [
         { label: 'New Chat', accelerator: 'CmdOrCtrl+N', click: cmd('newChat') },
+        { label: 'Search…', accelerator: 'CmdOrCtrl+K', click: cmd('search') },
         { label: 'Add Folder…', accelerator: 'CmdOrCtrl+O', click: cmd('addFolder') },
         { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: cmd('settings') },
         { type: 'separator' },
@@ -619,6 +744,16 @@ else {
       if (fs.existsSync(icon)) app.dock?.setIcon(icon)
     }
     createWindow()
+    // Look for a newer release shortly after launch and then every few hours.
+    const lookForUpdate = async () => {
+      const r = await checkLatest(app.getVersion())
+      if (r.ok && JSON.stringify(r.update) !== JSON.stringify(update)) {
+        update = r.update
+        pushState()
+      }
+    }
+    setTimeout(() => void lookForUpdate(), 8000)
+    setInterval(() => void lookForUpdate(), 6 * 60 * 60 * 1000)
     app.on('activate', () => {
       if (!BrowserWindow.getAllWindows().length) createWindow()
     })

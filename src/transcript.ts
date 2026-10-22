@@ -1,12 +1,39 @@
 import type { Item, PreviewDto } from './shared/ipc.js'
 import { toolByName, type Preview } from './tools/index.js'
 import { collapseContext, diffLines } from './tools/diff.js'
+import type { AttachmentView } from './shared/ipc.js'
 import type { Msg } from './types.js'
 
 const MAX_RESULT = 4000
 const MAX_DIFF_LINES = 400
 
 export const clip = (s: string) => (s.length > MAX_RESULT ? s.slice(0, MAX_RESULT) + '\n… (clipped)' : s)
+
+type UserMsg = Extract<Msg, { role: 'user' }>
+
+export function viewAttachments(m: UserMsg): AttachmentView[] | undefined {
+  const out: AttachmentView[] = [
+    ...(m.images ?? []).map((i) => ({ name: i.name, kind: 'image' as const, dataUrl: `data:${i.mime};base64,${i.data}` })),
+    ...(m.attached ?? []).map((f) => ({ name: f.name, kind: 'file' as const })),
+  ]
+  return out.length ? out : undefined
+}
+
+/**
+ * Cut the conversation back to just before the n-th (0-based) user message and return that message, so it can
+ * be edited or sent again. Returns null if there is no such message.
+ */
+export function rewindTo(messages: Msg[], ordinal: number): UserMsg | null {
+  let seen = -1
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.role === 'user' && ++seen === ordinal) {
+      messages.length = i
+      return m
+    }
+  }
+  return null
+}
 
 /** Turn saved model messages back into what the chat shows. */
 export function toItems(messages: Msg[]): Item[] {
@@ -15,7 +42,7 @@ export function toItems(messages: Msg[]): Item[] {
 
   const items: Item[] = []
   for (const m of messages) {
-    if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content })
+    if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m) })
     else if (m.role === 'assistant') {
       if (m.thinking?.trim()) items.push({ kind: 'thinking', text: m.thinking, done: true })
       if (m.content.trim()) items.push({ kind: 'assistant', text: m.content })

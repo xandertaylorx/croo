@@ -6,7 +6,12 @@ import { parseArgs, postJson, sseData } from './sse.js'
 export function toOpenAIMessages(system: string, messages: Msg[]) {
   const out: any[] = [{ role: 'system', content: system }]
   for (const m of messages) {
-    if (m.role === 'user') out.push({ role: 'user', content: m.content })
+    if (m.role === 'user') {
+      out.push({
+        role: 'user',
+        content: m.images?.length ? [{ type: 'text', text: m.content }, ...m.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } }))] : m.content,
+      })
+    }
     else if (m.role === 'tool') out.push({ role: 'tool', tool_call_id: m.toolCallId, content: m.content })
     else {
       const msg: any = { role: 'assistant', content: m.content || null }

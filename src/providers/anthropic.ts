@@ -6,8 +6,12 @@ import { parseArgs, postJson, sseData } from './sse.js'
 export function toAnthropicMessages(messages: Msg[]) {
   const out: any[] = []
   for (const m of messages) {
-    if (m.role === 'user') out.push({ role: 'user', content: m.content })
-    else if (m.role === 'assistant') {
+    if (m.role === 'user') {
+      out.push({
+        role: 'user',
+        content: m.images?.length ? [...m.images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })), { type: 'text', text: m.content }] : m.content,
+      })
+    } else if (m.role === 'assistant') {
       const blocks: any[] = []
       // Signed thinking blocks must go back exactly as received for tool use to continue.
       if (Array.isArray(m.meta)) blocks.push(...m.meta)

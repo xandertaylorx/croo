@@ -54,6 +54,18 @@ function chatRow(c: ChatInfo): HTMLElement {
   return row
 }
 
+/** "Croo 0.7.0 is out": bottom left, until you get it or wave it away. */
+function updateBanner(): HTMLElement | null {
+  const u = store.state.update
+  if (!u || remember.get('dismissedUpdate') === u.version) return null
+  return h(
+    'div',
+    { class: 'update', 'data-tip': u.notes ? u.notes.split('\n').filter(Boolean).slice(0, 3).join(' · ').slice(0, 160) : 'A newer version is available' },
+    h('button', { class: 'update-main no-drag', type: 'button', onClick: () => void croo.openExternal(u.url) }, icon('download', 15), h('span', { class: 'update-text' }, h('b', null, `Croo ${u.version} is out`), h('small', null, 'Click to download'))),
+    h('button', { class: 'row-btn show no-drag', type: 'button', title: 'Not now', onClick: () => (remember.set('dismissedUpdate', u.version), renderSidebar()) }, icon('x', 13)),
+  )
+}
+
 function segmented(): HTMLElement {
   const btn = (kind: 'chat' | 'code', label: string, key: string) =>
     h('button', { class: `seg-btn no-drag ${store.mode === kind ? 'on' : ''}`, type: 'button', role: 'tab', 'aria-selected': store.mode === kind, title: `${label} (${key})`, onClick: () => bus.mode(kind) }, icon(kind === 'chat' ? 'message' : 'code', 16))
@@ -112,8 +124,9 @@ export function renderSidebar() {
   )
 
   root.replaceChildren(
-    h('div', { class: 'sb-top drag' }, segmented(), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Hide sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.add('sidebar-hidden') }, icon('sidebar', 17))),
+    h('div', { class: 'sb-top drag' }, segmented(), h('span', { class: 'push-right' }), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Search (⌘K)', onClick: () => bus.command('search') }, icon('search', 16)), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Hide sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.add('sidebar-hidden') }, icon('sidebar', 17))),
     list,
+    ...(updateBanner() ? [updateBanner()!] : []),
     h('div', { class: 'sb-foot' }, footFrog.el, h('span', { class: 'brand' }, 'Croo'), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Settings (⌘,)', onClick: () => bus.settings() }, icon('gear', 17))),
   )
   list.scrollTop = scrollTop

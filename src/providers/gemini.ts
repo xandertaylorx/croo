@@ -6,7 +6,7 @@ import { postJson, sseData } from './sse.js'
 export function toGeminiContents(messages: Msg[]) {
   const out: any[] = []
   for (const m of messages) {
-    if (m.role === 'user') out.push({ role: 'user', parts: [{ text: m.content }] })
+    if (m.role === 'user') out.push({ role: 'user', parts: [{ text: m.content }, ...(m.images ?? []).map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] })
     else if (m.role === 'assistant') {
       const parts: any[] = []
       if (m.content) parts.push({ text: m.content })

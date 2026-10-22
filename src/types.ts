@@ -8,9 +8,22 @@ export interface ToolCall {
 
 export type Msg =
   /** `display` is what the chat shows when it differs from what the model got (e.g. "/init"). */
-  | { role: 'user'; content: string; display?: string }
+  | { role: 'user'; content: string; display?: string; images?: ImageAtt[]; attached?: AttachedFile[] }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; thinking?: string; /** Provider data that must round-trip, e.g. Anthropic's signed thinking blocks. */ meta?: unknown }
   | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean }
+
+/** An image sent with a message, as base64 (no data: prefix). */
+export interface ImageAtt {
+  name: string
+  mime: string
+  data: string
+}
+
+/** A text file sent with a message. Its text is already part of `content`; this keeps it for editing and display. */
+export interface AttachedFile {
+  name: string
+  text: string
+}
 
 export interface ToolSpec {
   name: string
@@ -68,5 +81,7 @@ export interface Config {
   pet: boolean
   animations: boolean
   permissionMode: PermissionMode
+  /** System notification when a turn finishes or needs approval while the window is in the background. */
+  notify: boolean
   effort: import('./effort.js').Effort
 }

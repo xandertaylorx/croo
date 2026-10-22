@@ -84,6 +84,12 @@ export async function refreshGit() {
   } catch {}
 }
 
+/** Show a file in the Files panel (from search results or a mention). */
+export async function openFileInPanel(rel: string) {
+  if (tab !== 'files') toggleSide('files')
+  await tree.openRel(rel)
+}
+
 export function refreshFiles() {
   if (tab === 'files' && !tree.viewing) void tree.reload()
 }
@@ -163,6 +169,12 @@ const tree = (() => {
     if (viewing) show()
   }
 
+  const openRel = async (rel: string) => {
+    if (!cwd) return
+    viewing = await croo.fsRead(cwd, rel)
+    if (viewing) show()
+  }
+
   const reload = async () => {
     const dirs = ['', ...open]
     await Promise.all(dirs.map(load))
@@ -223,6 +235,7 @@ const tree = (() => {
   return {
     view,
     reload,
+    openRel,
     reset() {
       open.clear()
       cache.clear()

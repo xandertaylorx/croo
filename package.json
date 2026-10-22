@@ -1,7 +1,7 @@
 {
   "name": "croo",
   "productName": "Croo",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Croo: a minimal desktop AI coding agent with a frog in it. Bring your own API key.",
   "private": true,
   "type": "module",
@@ -18,7 +18,8 @@
     "icon": "node scripts/make-icon.mjs",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --mac",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "release": "npm run build && electron-builder --mac --publish always"
   },
   "keywords": [
     "ai",
@@ -85,6 +86,14 @@
     },
     "asarUnpack": [
       "**/node_modules/node-pty/**"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "xandertaylorx",
+        "repo": "croo",
+        "releaseType": "release"
+      }
     ]
   },
   "dependencies": {

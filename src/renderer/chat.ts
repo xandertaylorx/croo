@@ -6,7 +6,9 @@ import { openModelMenu } from './models.js'
 import { clampEffort, type Effort } from '../effort.js'
 import { refreshFiles, refreshGit } from './side.js'
 import { appendOutput, cleanShell, elapsed } from './run.js'
-import type { RunKind } from '../shared/ipc.js'
+import type { Attachment, AttachmentView, RunKind } from '../shared/ipc.js'
+import { attachmentsFromFiles, shrinkImage } from './attach.js'
+import { costOf, formatCost } from '../cost.js'
 import { bus, croo, store, type ChatView } from './store.js'
 import type { PermissionMode } from '../shared/ipc.js'
 
@@ -40,6 +42,7 @@ interface Mounted {
   mode: HTMLButtonElement
   chip: HTMLButtonElement
   effort: HTMLButtonElement
+  tray: HTMLElement
   hero: HTMLElement | null
   stick: boolean
 }
@@ -62,10 +65,12 @@ function metaText(v: ChatView): string {
   const out = (v.tokens?.output ?? 0) + (live ? (v.streamed ?? 0) / 4 : 0)
   const total = (v.tokens?.input ?? 0) + out
   if (total >= 1) parts.push(`${live ? '~' : ''}${fmtTokens(total)} tokens`)
+  const price = store.state.demo ? undefined : store.state.profiles.find((p) => p.active)?.price
+  if (price && price.source !== 'local' && total >= 1) parts.push(`~${formatCost(costOf({ input: v.tokens?.input ?? 0, output: out }, price))}`)
   return parts.join(' · ')
 }
 
-const metaTip = (v: ChatView) => `Input ${(v.tokens?.input ?? 0).toLocaleString()} · Output ${Math.round((v.tokens?.output ?? 0) + (v.streamed ?? 0) / 4).toLocaleString()} tokens`
+const metaTip = (v: ChatView) => `Input ${(v.tokens?.input ?? 0).toLocaleString()} · Output ${Math.round((v.tokens?.output ?? 0) + (v.streamed ?? 0) / 4).toLocaleString()} tokens. Cost is an estimate from list prices.`
 
 // Keep the clock moving while a turn runs, without redrawing the whole status row.
 setInterval(() => {
@@ -78,7 +83,7 @@ setInterval(() => {
 function renderItem(item: Item): HTMLElement {
   switch (item.kind) {
     case 'user':
-      return h('div', { class: 'msg user' }, h('div', { class: 'bubble' }, item.text))
+      return renderUser(item)
     case 'assistant':
       return h('div', { class: 'msg assistant md', html: renderMarkdown(item.text) })
     case 'thinking':
@@ -90,6 +95,67 @@ function renderItem(item: Item): HTMLElement {
     case 'confirm':
       return renderConfirm(item)
   }
+}
+
+const attView = (a: AttachmentView) =>
+  a.kind === 'image' && a.dataUrl ? h('img', { class: 'att-img', src: a.dataUrl, alt: a.name, title: a.name }) : h('span', { class: 'att-file' }, icon('file', 12), a.name)
+
+function renderUser(item: Extract<Item, { kind: 'user' }>): HTMLElement {
+  const atts = item.attachments ?? []
+  return h(
+    'div',
+    { class: 'msg user' },
+    h('div', { class: 'msg-actions' }, h('button', { class: 'icon-btn small', type: 'button', title: 'Edit and resend', onClick: () => startEdit(item) }, icon('pencil', 13))),
+    h('div', { class: 'bubble' }, atts.length ? h('div', { class: 'bubble-atts' }, atts.map(attView)) : null, item.text),
+  )
+}
+
+/** Turn a sent message into a box you can edit; resending replaces everything after it. */
+function startEdit(item: Extract<Item, { kind: 'user' }>) {
+  if (!m || running(m.view)) return
+  const el = m.els.get(item)
+  if (!el) return
+  const area = h('textarea', { class: 'edit-area', rows: 2, spellcheck: 'true' })
+  area.value = item.text
+  const go = () => void rerun(item, area.value.trim())
+  const grow = () => ((area.style.height = 'auto'), (area.style.height = Math.min(area.scrollHeight, 260) + 'px'))
+  area.addEventListener('input', grow)
+  area.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) (e.preventDefault(), go())
+    else if (e.key === 'Escape') (e.stopPropagation(), touch(item))
+  })
+  const form = h(
+    'div',
+    { class: 'msg user editing' },
+    h(
+      'div',
+      { class: 'edit-box' },
+      item.attachments?.length ? h('div', { class: 'bubble-atts' }, item.attachments.map(attView)) : null,
+      area,
+      h('div', { class: 'edit-foot' }, h('small', null, 'Replaces everything after this message. Changes already made to files stay.'), h('span', { class: 'push-right' }), h('button', { class: 'btn ghost small', type: 'button', onClick: () => touch(item) }, 'Cancel'), h('button', { class: 'btn primary small', type: 'button', onClick: go }, 'Resend')),
+    ),
+  )
+  el.replaceWith(form)
+  m.els.set(item, form)
+  requestAnimationFrame(() => (grow(), area.focus()))
+}
+
+/** Cut the chat back to just before `item`, then send `text` (with the same attachments) as a fresh message. */
+async function rerun(item: Extract<Item, { kind: 'user' }>, text: string) {
+  if (!m || !text) return
+  const v = m.view
+  const ordinal = v.items.filter((i) => i.kind === 'user').indexOf(item)
+  const res = await croo.rewind(v.id, ordinal)
+  if (!res.ok) return void push(v, { kind: 'error', text: res.error })
+  for (const it of v.items.slice(v.items.indexOf(item))) remove(it)
+  await sendMessage(v, text, res.attachments)
+}
+
+/** Send the last message again, replacing the reply it got. */
+async function retryLast() {
+  if (!m || running(m.view)) return
+  const last = [...m.view.items].reverse().find((i): i is Extract<Item, { kind: 'user' }> => i.kind === 'user')
+  if (last) await rerun(last, last.text)
 }
 
 const duration = (s: number) => (s < 1 ? 'a moment' : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`)
@@ -306,6 +372,12 @@ async function runBlock(block: Element, btn: HTMLElement) {
 }
 
 export function initRuns() {
+  // Files dropped on the message box or the thread become attachments.
+  croo.onAttach((list, skipped) => void addAttachments(list, [...skipped]))
+  const over = (on: boolean) => document.querySelector('.composer')?.classList.toggle('dragging', on)
+  window.addEventListener('dragover', (e) => over(!!(e.target as HTMLElement).closest?.('.composer-wrap, .thread, .scroll') && !!m))
+  window.addEventListener('dragleave', (e) => !e.relatedTarget && over(false))
+  window.addEventListener('drop', () => over(false))
   croo.onRunData((id, data) => {
     const r = runById.get(id)
     if (!r) return
@@ -393,7 +465,7 @@ function paintStatus() {
     status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)))
   } else if (v.note) {
     frog.set(v.note.startsWith('Stopped') ? 'idle' : v.note.startsWith('Something') ? 'oops' : 'happy')
-    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)))
+    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)), h('button', { class: 'status-btn', type: 'button', title: 'Retry', onClick: () => void retryLast() }, icon('refresh', 12), 'Retry'))
   }
   m.send.replaceChildren(icon(running(v) ? 'stop' : 'arrowUp', running(v) ? 16 : 18))
   m.send.classList.toggle('stop', running(v))
@@ -404,7 +476,7 @@ function paintStatus() {
 
 function syncSend() {
   if (!m) return
-  m.send.disabled = !running(m.view) && !m.input.value.trim()
+  m.send.disabled = !running(m.view) && !m.input.value.trim() && !(m.view.attachments?.length)
 }
 
 export function handleEvent(ev: ChatEvent) {
@@ -495,26 +567,139 @@ function closeOpenConfirms(v: ChatView) {
 
 // ---------- the pane ----------
 
-async function submit() {
-  if (!m) return
-  const { view: v, input } = m
-  if (running(v)) return
-  const text = input.value.trim()
-  if (!text) return
-  input.value = ''
-  v.draft = ''
-  autosize()
-  m.stick = true
+const toView = (a: Attachment): AttachmentView => ({ name: a.name, kind: a.kind, dataUrl: a.kind === 'image' ? a.dataUrl : undefined })
+
+async function sendMessage(v: ChatView, text: string, atts: Attachment[]) {
+  if (m) m.stick = true
   v.t0 = performance.now()
   v.tokens = { input: 0, output: 0 }
   v.streamed = 0
-  push(v, { kind: 'user', text })
+  push(v, { kind: 'user', text, attachments: atts.length ? atts.map(toView) : undefined })
   setStatus(v, 'thinking')
-  const res = await croo.send(v.id, text)
+  const res = await croo.send(v.id, text, atts)
   if (!res.ok) {
     push(v, { kind: 'error', text: res.error })
     setStatus(v, 'idle')
   }
+}
+
+async function submit() {
+  if (!m) return
+  const { view: v, input } = m
+  if (running(v)) return
+  const atts = v.attachments ?? []
+  const text = input.value.trim() || (atts.length ? 'See what I attached.' : '')
+  if (!text) return
+  input.value = ''
+  v.draft = ''
+  v.attachments = []
+  closeMention()
+  paintTray()
+  autosize()
+  await sendMessage(v, text, atts)
+}
+
+// ---------- attachments ----------
+
+const MAX_ATTACHMENTS = 8
+let trayNote: string | null = null
+
+function paintTray() {
+  if (!m) return
+  const atts = m.view.attachments ?? []
+  m.tray.hidden = !atts.length && !trayNote
+  m.tray.replaceChildren(
+    ...atts.map((a, i) =>
+      h(
+        'div',
+        { class: 'att', title: a.name },
+        a.kind === 'image' && a.dataUrl ? h('img', { src: a.dataUrl, alt: '' }) : icon('file', 14),
+        h('span', null, a.name),
+        h('button', { class: 'att-x', type: 'button', title: 'Remove', onClick: () => (atts.splice(i, 1), paintTray(), syncSend()) }, icon('x', 11)),
+      ),
+    ),
+    ...(trayNote ? [h('span', { class: 'att-note' }, trayNote)] : []),
+  )
+}
+
+async function addAttachments(list: Attachment[], skipped: string[]) {
+  if (!m) return
+  const v = m.view
+  const have = v.attachments ?? (v.attachments = [])
+  for (const a of list) {
+    if (have.length >= MAX_ATTACHMENTS) {
+      skipped.push(a.name)
+      continue
+    }
+    try {
+      have.push(a.kind === 'image' ? await shrinkImage(a) : a)
+    } catch {
+      skipped.push(a.name)
+    }
+  }
+  trayNote = skipped.length ? `Couldn’t attach ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? '…' : ''} (too big, or not text or an image)` : null
+  if (trayNote) setTimeout(() => ((trayNote = null), paintTray()), 5000)
+  paintTray()
+  syncSend()
+}
+
+// ---------- @file mentions ----------
+
+let mention: { start: number; items: string[]; index: number } | null = null
+let mentionTimer = 0
+
+function closeMention() {
+  mention = null
+  clearTimeout(mentionTimer)
+  document.querySelector('.mention-menu')?.remove()
+}
+
+function paintMention() {
+  if (!m || !mention) return
+  const wrap = m.input.closest('.composer-wrap')
+  document.querySelector('.mention-menu')?.remove()
+  const mn = mention
+  wrap?.append(
+    h(
+      'div',
+      { class: 'mention-menu', role: 'listbox' },
+      mn.items.map((rel, i) => {
+        const slash = rel.lastIndexOf('/')
+        return h('button', { class: `mention-row ${i === mn.index ? 'on' : ''}`, type: 'button', role: 'option', onMousedown: (e: Event) => e.preventDefault(), onClick: () => insertMention(i) }, icon('file', 14), h('span', { class: 'mention-name' }, rel.slice(slash + 1)), slash >= 0 ? h('small', null, rel.slice(0, slash)) : null)
+      }),
+    ),
+  )
+  document.querySelector('.mention-row.on')?.scrollIntoView({ block: 'nearest' })
+}
+
+function insertMention(i: number) {
+  if (!m || !mention) return
+  const t = m.input
+  const rel = mention.items[i]
+  const at = t.selectionStart
+  t.value = `${t.value.slice(0, mention.start)}@${rel} ${t.value.slice(at)}`
+  const caret = mention.start + rel.length + 2
+  t.setSelectionRange(caret, caret)
+  closeMention()
+  t.dispatchEvent(new Event('input'))
+  t.focus()
+}
+
+function updateMention() {
+  if (!m || m.view.kind !== 'code') return closeMention()
+  const t = m.input
+  const before = t.value.slice(0, t.selectionStart)
+  const hit = before.match(/(^|\s)@([\w./-]*)$/)
+  if (!hit) return closeMention()
+  const start = before.length - hit[2].length - 1
+  clearTimeout(mentionTimer)
+  mentionTimer = window.setTimeout(async () => {
+    if (!m) return
+    const items = await croo.searchFiles(m.view.cwd, hit[2])
+    if (!m || !items.length) return closeMention()
+    mention = { start, items, index: 0 }
+    paintMention()
+  }, 80)
 }
 
 function autosize() {
@@ -560,7 +745,8 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const chip = h('button', { class: 'chip no-drag', type: 'button', onClick: () => openModelMenu(chip, composerWrap) })
   const effort = h('button', { class: 'effort no-drag', type: 'button', onClick: () => toggleEffortMenu() })
   const composerWrap = h('div', { class: 'composer-wrap' })
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, hero: null, stick: true }
+  const tray = h('div', { class: 'attach-tray', hidden: true })
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, hero: null, stick: true }
   const mounted = m
 
   input.value = view.draft
@@ -569,8 +755,26 @@ export function showChat(view: ChatView, root: HTMLElement) {
     autosize()
     syncSend()
     updateSlash()
+    updateMention()
+  })
+  input.addEventListener('click', updateMention)
+  input.addEventListener('paste', async (e) => {
+    const files = [...(e.clipboardData?.files ?? [])]
+    if (!files.length) return
+    e.preventDefault()
+    const r = await attachmentsFromFiles(files)
+    await addAttachments(r.attachments, r.skipped)
   })
   input.addEventListener('keydown', (e) => {
+    if (mention) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        mention.index = (mention.index + (e.key === 'ArrowDown' ? 1 : -1) + mention.items.length) % mention.items.length
+        return paintMention()
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) return e.preventDefault(), insertMention(mention.index)
+      if (e.key === 'Escape') return e.stopPropagation(), closeMention()
+    }
     if (slashOpen() && (e.key === 'Tab' || (e.key === 'Enter' && input.value.trim() !== '/init'))) {
       e.preventDefault()
       input.value = '/init '
@@ -653,7 +857,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
     ),
   )
   composerWrap.append(
-    h('div', { class: 'composer' }, input, send),
+    h('div', { class: 'composer' }, tray, input, h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('paperclip', 17)), send),
     h(
       'div',
       { class: 'composer-hint' },
@@ -673,6 +877,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
   }
   paintStatus()
   refreshMode()
+  paintTray()
   autosize()
   void profile
   requestAnimationFrame(() => {

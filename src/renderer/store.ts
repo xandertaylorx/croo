@@ -1,4 +1,4 @@
-import type { AppState, ChatKind, CrooApi, Item } from '../shared/ipc.js'
+import type { AppState, Attachment, ChatKind, Command, CrooApi, Item } from '../shared/ipc.js'
 
 declare global {
   interface Window {
@@ -25,6 +25,8 @@ export interface ChatView {
   tokens?: { input: number; output: number }
   /** Characters streamed since the last usage report, to estimate output while it is still arriving. */
   streamed?: number
+  /** Files and images waiting in the message box. */
+  attachments?: Attachment[]
 }
 
 export const store = {
@@ -44,6 +46,7 @@ export const bus = {
   openChat: async (_id: string) => {},
   newChat: async (_cwd: string, _kind: ChatKind) => {},
   settings: () => {},
+  command: (_c: Command) => {},
   mode: (_kind: ChatKind) => {},
   terminal: () => {},
   files: () => {},

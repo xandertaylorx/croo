@@ -35,6 +35,11 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 | **Terminal** | A real shell in the folder (`⌘J`), with tabs (`⌘T`). |
 | **Thinking, time and tokens** | Reasoning streams into an expandable "Thought for 4s" row. A live clock and token count run while the agent works. |
 | **Models and effort** | The model chip lists what your key can actually use. The **Effort** control appears for models that have one and is clamped to what each model accepts. |
+| **Attach and mention** | Paste or drop images and files into the message box, or use the paperclip. Type `@` to pick a file from the folder and it is sent along with your message. Big images are scaled down first. |
+| **Search** | `⌘K` finds chats (by title or what was said), files and actions. |
+| **Edit and retry** | Edit any message and resend (everything after it is replaced), or **Retry** the last reply. |
+| **Cost** | Time, tokens and an estimated cost under each reply. Claude prices are built in, set your own for other providers, local models are free. |
+| **Notifications and updates** | A system notification when a task finishes or needs your OK while Croo is in the background. A notice at the bottom left of the sidebar when a new version is out. |
 | **Project instructions** | Reads `AGENTS.md`, `CLAUDE.md` and `CROO.md` every turn. `/init` studies the project and writes `AGENTS.md`. |
 | **A frog** | Pixel art that breathes, blinks, hops, catches flies, falls asleep, and reacts to thinking, working, waiting, done and errors. Click it. |
 
@@ -83,8 +88,19 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 | `⌘N` | New chat | `⌘⇧E` | Files |
 | `⌘O` | Add folder | `⌘⇧G` | Git |
 | `⌘B` | Sidebar | `⌘⇧B` | Browser |
+| `⌘K` | Search | `@` | Mention a file |
 | `⇧Tab` | Permission mode | `⌘↵` / `esc` | Allow / deny |
 | `⌘,` | Settings | `/init` | Write `AGENTS.md` |
+
+## Releases and updates
+
+Push a version tag and GitHub Actions builds the macOS app and attaches it to a GitHub Release:
+
+```bash
+git tag v0.7.0 && git push origin v0.7.0
+```
+
+The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking it downloads the installer for your Mac. Builds are unsigned until a Developer ID certificate is added to the repository secrets (see `.github/workflows/release.yml`), so macOS may ask you to confirm the first launch.
 
 ## Layout
 

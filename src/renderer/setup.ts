@@ -95,7 +95,7 @@ export function renderOnboarding(root: HTMLElement) {
 
 let modal: HTMLElement | null = null
 /** Which inline panel is open on each provider card. */
-const panels = new Map<string, 'key' | 'models'>()
+const panels = new Map<string, 'key' | 'models' | 'price'>()
 
 export function closeSettings() {
   modal?.remove()
@@ -152,6 +152,24 @@ const SHORTCUTS: [string, string][] = [
   ['⌘⇧E', 'Files'], ['⌘⇧G', 'Git'], ['⌘⇧B', 'Browser'], ['⇧Tab', 'Cycle permission mode'], ['⌘↵', 'Allow an approval'], ['⌘,', 'Settings'],
 ]
 
+function priceForm(p: AppState['profiles'][number], close: () => void): HTMLElement {
+  const num = (v?: number) => h('input', { class: 'input small', type: 'number', min: '0', step: '0.01', placeholder: '0.00', value: v === undefined ? '' : String(v), 'aria-label': 'Dollars per million tokens' })
+  const input = num(p.price?.source === 'custom' ? p.price.input : undefined)
+  const output = num(p.price?.source === 'custom' ? p.price.output : undefined)
+  const save = () => {
+    const i = parseFloat(input.value)
+    const o = parseFloat(output.value)
+    void croo.setPrice(p.name, Number.isFinite(i) ? i : undefined, Number.isFinite(o) ? o : undefined).then(close)
+  }
+  return h(
+    'div',
+    { class: 'inline-form' },
+    h('div', { class: 'inline-row price-row' }, h('label', null, h('span', null, 'Input $ / 1M'), input), h('label', null, h('span', null, 'Output $ / 1M'), output)),
+    h('p', { class: 'muted' }, 'Used for the cost estimate under each reply. Claude list prices are built in; set your own for other providers. Leave both empty to reset.'),
+    h('div', { class: 'inline-row' }, h('button', { class: 'btn primary', type: 'button', onClick: save }, 'Save'), h('button', { class: 'btn ghost', type: 'button', onClick: close }, 'Cancel')),
+  )
+}
+
 export function openSettings() {
   if (modal) return closeSettings()
   const content = h('div', { class: 'settings-pane' })
@@ -166,7 +184,7 @@ export function openSettings() {
 
   const profileCard = (p: AppState['profiles'][number], demo: boolean) => {
     const open = panels.get(p.name)
-    const toggle = (kind: 'key' | 'models') => {
+    const toggle = (kind: 'key' | 'models' | 'price') => {
       panels.get(p.name) === kind ? panels.delete(p.name) : panels.set(p.name, kind)
       paint()
     }
@@ -192,7 +210,15 @@ export function openSettings() {
           : h('span', { class: 'pcard-val warn' }, 'No key yet'),
         h('button', { class: `btn small ${open === 'key' ? 'on' : ''} ${p.hasKey ? '' : 'primary'}`, type: 'button', onClick: () => toggle('key') }, p.hasKey ? 'Update' : 'Add key'),
       ),
+      h(
+        'div',
+        { class: 'pcard-row' },
+        h('span', { class: 'pcard-label' }, 'Price'),
+        h('span', { class: 'pcard-val' }, p.price ? (p.price.source === 'local' ? 'Free (local server)' : `$${p.price.input} in · $${p.price.output} out per 1M tokens`) : 'Unknown', p.price && p.price.source !== 'local' ? h('em', null, p.price.source === 'custom' ? ' · yours' : ' · list price') : null),
+        h('button', { class: `btn small ${open === 'price' ? 'on' : ''}`, type: 'button', onClick: () => toggle('price') }, p.price?.source === 'custom' ? 'Edit' : 'Set'),
+      ),
       open === 'key' ? keyForm(p.name, () => (panels.delete(p.name), paint())) : null,
+      open === 'price' ? priceForm(p, () => (panels.delete(p.name), paint())) : null,
       open === 'models' ? h('div', { class: 'pcard-models' }, modelList({ profile: p.name, current: p.model, autofocus: true, onPick: (id) => void croo.setModel(p.name, id) })) : null,
     )
   }
@@ -216,6 +242,8 @@ export function openSettings() {
   const generalPane = () => {
     const s = store.state
     const active = s.profiles.find((p) => p.active)
+    const notifySwitch = h('input', { class: 'switch', type: 'checkbox', role: 'switch', onChange: (e: Event) => void croo.setNotify((e.target as HTMLInputElement).checked) })
+    notifySwitch.checked = s.notify
     return [
       head('General', 'Defaults for every chat.'),
       h('div', { class: 'section-label' }, 'Permissions'),
@@ -233,15 +261,39 @@ export function openSettings() {
         EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
       ),
       h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
+      h('div', { class: 'section-label' }, 'Notifications'),
+      h(
+        'label',
+        { class: 'switch-row' },
+        h('span', null, 'Tell me when a task finishes or needs my OK', h('small', null, 'Only while Croo is in the background.')),
+        notifySwitch,
+      ),
       h('div', { class: 'section-label' }, 'Appearance'),
       h('p', { class: 'muted' }, 'Croo follows your system’s light or dark setting.'),
     ]
+  }
+
+  const updateRow = () => {
+    const u = store.state.update
+    const status = h('span', { class: 'muted' }, u ? `Version ${u.version} is available.` : 'You are on the latest version.')
+    const btn = h('button', { class: 'btn small', type: 'button' }, u ? 'Download' : 'Check for updates')
+    btn.addEventListener('click', async () => {
+      if (u) return void croo.openExternal(u.url)
+      btn.disabled = true
+      status.textContent = 'Checking…'
+      const r = await croo.checkUpdate()
+      btn.disabled = false
+      status.textContent = !r.ok ? r.error : r.update ? `Version ${r.update.version} is available.` : 'You are on the latest version.'
+      if (r.ok && r.update) paint()
+    })
+    return h('div', { class: 'update-row' }, status, btn)
   }
 
   const aboutPane = () => {
     const s = store.state
     return [
       head('About', `Croo ${s.version}`),
+      updateRow(),
       h('div', { class: 'section-label' }, 'Privacy'),
       h('p', { class: 'muted' }, s.secureKeys ? 'API keys are encrypted with your Mac’s keychain before they are written to disk. ' : 'API keys are saved in ~/.config/croo, readable only by you. ', 'Chats and folders stay in ~/.local/share/croo. The only network calls are to the model provider you choose.'),
       h('div', { class: 'section-label' }, 'Project instructions'),
