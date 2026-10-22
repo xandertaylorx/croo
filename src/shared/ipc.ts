@@ -1,8 +1,9 @@
 /** Types shared by the main process, the preload bridge and the renderer. */
 import type { DiffLine } from '../tools/diff.js'
+import type { Effort } from '../effort.js'
 import type { PermissionMode } from '../types.js'
 
-export type { PermissionMode }
+export type { Effort, PermissionMode }
 
 export type ToolStatus = 'running' | 'ok' | 'error' | 'denied'
 
@@ -59,6 +60,8 @@ export interface ProfileInfo {
   keyHint: string
   keySource: 'saved' | 'env' | 'none'
   local: boolean
+  /** Effort levels this provider's model accepts, empty when it has no such setting. */
+  efforts: Effort[]
 }
 
 export interface ModelInfo {
@@ -100,11 +103,17 @@ export interface GitStatus {
   ahead: number
   behind: number
   files: GitFile[]
+  /** Configured remotes; empty means pushing has nowhere to go yet. */
+  remotes: string[]
+  /** The GitHub CLI is installed and signed in, so a repository can be created from here. */
+  gh: boolean
 }
 
 export interface GitResult {
   ok: boolean
   output: string
+  /** A plain-language explanation and fix when git failed in a way we recognise. */
+  hint?: string
 }
 
 export interface RunExit {
@@ -124,6 +133,7 @@ export interface AppState {
   ready: boolean
   demo: boolean
   permissionMode: PermissionMode
+  effort: Effort
   profiles: ProfileInfo[]
   workspaces: WorkspaceInfo[]
   /** Plain conversations (Chat mode), newest first. */
@@ -158,6 +168,7 @@ export interface CrooApi {
   removeProfile(name: string): Promise<void>
   startDemo(): Promise<void>
   setMode(mode: PermissionMode): Promise<void>
+  setEffort(effort: Effort): Promise<void>
   listModels(profile?: string): Promise<{ models: ModelInfo[]; error?: string }>
   setModel(profile: string, model: string): Promise<void>
   updateKey(profile: string, apiKey: string): Promise<Result>
@@ -173,6 +184,10 @@ export interface CrooApi {
   gitPush(cwd: string, hasUpstream: boolean): Promise<GitResult>
   gitPull(cwd: string): Promise<GitResult>
   gitInit(cwd: string): Promise<GitResult>
+  /** Add (or replace) origin, then push. Accepts a URL or GitHub's owner/repo shorthand. */
+  gitConnect(cwd: string, remote: string): Promise<GitResult>
+  /** Create a GitHub repository with the gh CLI and push to it. */
+  gitPublish(cwd: string, name: string, isPrivate: boolean): Promise<GitResult>
   /** Run a snippet from the chat in the folder; output streams back through onRunData / onRunExit. */
   runCode(cwd: string, kind: RunKind, code: string): Promise<string>
   runStop(id: string): void

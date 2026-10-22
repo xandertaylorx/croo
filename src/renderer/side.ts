@@ -293,7 +293,7 @@ const gitPanel = (() => {
           ? await croo.gitPush(cwd, !!status.upstream)
           : await croo.gitPull(cwd)
     busy = ''
-    note = { ok: res.ok, text: res.output }
+    note = { ok: res.ok, text: res.hint ? (res.output ? `${res.hint}\n\n${res.output}` : res.hint) : res.output }
     if (res.ok && kind === 'commit') {
       message = ''
       if (box) box.value = ''

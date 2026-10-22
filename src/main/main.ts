@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Cancelled, runTurn } from '../agent.js'
+import { EFFORTS, effortLevels, type Effort } from '../effort.js'
 import { isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig, defaultConfig } from '../config.js'
 import { Permissions } from '../permissions.js'
 import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles } from '../prompt.js'
@@ -17,7 +18,7 @@ import type { AddProfileRequest, AppState, ChatEvent, ChatInfo, ChatKind, Comman
 import { Ignore } from '../tools/ignore.js'
 import { safePath } from '../tools/index.js'
 import { clip, toItems, toPreviewDto } from '../transcript.js'
-import { gitCommit, gitDiff, gitInit, gitPull, gitPush, gitStatus } from './git.js'
+import { gitCommit, gitConnect, gitDiff, gitInit, gitPublish, gitPull, gitPush, gitStatus } from './git.js'
 import { Runner } from './runner.js'
 import { Terminals } from './terminal.js'
 import type { Config, PermissionMode, Profile } from '../types.js'
@@ -121,6 +122,7 @@ function buildState(): AppState {
     ready: demo || (!!active && usable(active[1])),
     demo,
     permissionMode: cfg.permissionMode,
+    effort: cfg.effort,
     configError,
     profiles: Object.entries(cfg.profiles).map(([name, p]) => ({
       name,
@@ -131,6 +133,7 @@ function buildState(): AppState {
       keyHint: p.apiKey ? maskKey(p.apiKey) : resolveApiKey(p) ? 'from environment' : '',
       keySource: p.apiKey ? 'saved' : resolveApiKey(p) ? 'env' : 'none',
       local: isLocalUrl(p.baseUrl),
+      efforts: effortLevels(p.type, p.model) ?? [],
     })),
     workspaces: workspaces.map((p) => ({ path: p, name: path.basename(p) || p, missing: !isDir(p), instructions: instructionFiles(p), chats: chatsFor(p) })),
     chats: plainChats(),
@@ -203,6 +206,7 @@ function startTurn(chatId: string, rt: Runtime, text: string) {
         cwd: session.cwd,
         permissions: rt.permissions,
         signal: ac.signal,
+        effort: cfg.effort,
         tools: plain ? [] : undefined,
         hooks: {
           onThinking: () => emit({ chatId, type: 'thinking' }),
@@ -363,6 +367,12 @@ function registerIpc() {
     persist()
     pushState()
   })
+  ipcMain.handle('effort:set', (_e, effort: Effort) => {
+    if (!EFFORTS.includes(effort)) return
+    cfg = { ...cfg, effort }
+    persist()
+    pushState()
+  })
   ipcMain.handle('mode:set', (_e, mode: PermissionMode) => {
     if (!['manual', 'auto', 'bypass'].includes(mode)) return
     cfg = { ...cfg, permissionMode: mode }
@@ -458,6 +468,8 @@ function registerIpc() {
   ipcMain.handle('git:push', (_e, cwd: string, hasUpstream: boolean) => (inWorkspace(cwd), gitPush(cwd, hasUpstream)))
   ipcMain.handle('git:pull', (_e, cwd: string) => (inWorkspace(cwd), gitPull(cwd)))
   ipcMain.handle('git:init', (_e, cwd: string) => (inWorkspace(cwd), gitInit(cwd)))
+  ipcMain.handle('git:connect', (_e, cwd: string, remote: string) => (inWorkspace(cwd), gitConnect(cwd, remote)))
+  ipcMain.handle('git:publish', (_e, cwd: string, name: string, isPrivate: boolean) => (inWorkspace(cwd), gitPublish(cwd, name, !!isPrivate)))
   ipcMain.handle('run:start', (_e, cwd: string, kind: RunKind, code: string) => {
     inWorkspace(cwd)
     if (!['shell', 'python', 'node'].includes(kind) || typeof code !== 'string' || code.length > 200_000) throw new Error('Cannot run that.')

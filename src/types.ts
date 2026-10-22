@@ -25,6 +25,8 @@ export interface Usage {
 }
 
 export interface ChatRequest {
+  /** Reasoning effort; omitted or "auto" lets the provider decide. */
+  effort?: import('./effort.js').Effort
   system: string
   messages: Msg[]
   tools: ToolSpec[]
@@ -66,4 +68,5 @@ export interface Config {
   pet: boolean
   animations: boolean
   permissionMode: PermissionMode
+  effort: import('./effort.js').Effort
 }

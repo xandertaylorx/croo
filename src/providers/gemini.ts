@@ -1,5 +1,6 @@
 import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
+import { GEMINI_BUDGET, clampEffort, effortLevels } from '../effort.js'
 import { postJson, sseData } from './sse.js'
 
 export function toGeminiContents(messages: Msg[]) {
@@ -40,16 +41,26 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
       // The key goes in a header, never the URL, so it cannot leak into logs.
       const url = `${base}/v1beta/models/${model}:streamGenerateContent?alt=sse`
       const headers = { 'x-goog-api-key': apiKey ?? '' }
-      body.generationConfig = { thinkingConfig: { includeThoughts: true } }
-      let res: Response
-      try {
-        res = await postJson(url, headers, body, req.signal)
-      } catch (e: any) {
-        // Models without thinking support reject the config: retry plain.
-        if (!/thinking|thought/i.test(e?.message ?? '')) throw e
-        delete body.generationConfig
-        res = await postJson(url, headers, body, req.signal)
+      // Thinking settings, richest first: effort level, then just "show thoughts", then nothing.
+      const levels = effortLevels('gemini', model)
+      const level = levels ? clampEffort(req.effort ?? 'auto', levels) : null
+      const attempts: (object | undefined)[] = []
+      if (level) {
+        attempts.push(/gemini-3/.test(model) ? { includeThoughts: true, thinkingLevel: level } : { includeThoughts: true, thinkingBudget: GEMINI_BUDGET[level as 'low' | 'medium' | 'high'] })
       }
+      attempts.push({ includeThoughts: true }, undefined)
+      let res: Response | undefined
+      for (let i = 0; i < attempts.length && !res; i++) {
+        if (attempts[i]) body.generationConfig = { thinkingConfig: attempts[i] }
+        else delete body.generationConfig
+        try {
+          res = await postJson(url, headers, body, req.signal)
+        } catch (e: any) {
+          // Models without thinking support reject the config: step down and retry.
+          if (i === attempts.length - 1 || !/thinking|thought/i.test(e?.message ?? '')) throw e
+        }
+      }
+      if (!res) throw new Error('The model rejected every reasoning setting we tried.')
 
       let text = ''
       let thinking = ''

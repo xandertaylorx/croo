@@ -21,6 +21,7 @@ export interface TurnOptions {
   permissions: Permissions
   hooks: AgentHooks
   signal: AbortSignal
+  effort?: import('./effort.js').Effort
   /** Defaults to every tool. Pass [] for a plain conversation. */
   tools?: Tool[]
   maxSteps?: number
@@ -40,7 +41,7 @@ export async function runTurn(o: TurnOptions): Promise<void> {
     let res
     try {
       res = await o.provider.chat(
-        { system: o.system, messages: o.messages, tools: (o.tools ?? TOOLS).map((t) => t.spec), signal },
+        { system: o.system, messages: o.messages, tools: (o.tools ?? TOOLS).map((t) => t.spec), signal, effort: o.effort },
         hooks.onText,
         hooks.onReasoning,
       )

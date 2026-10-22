@@ -1,5 +1,6 @@
 import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
+import { clampEffort, effortLevels } from '../effort.js'
 import { parseArgs, postJson, sseData } from './sse.js'
 
 export function toOpenAIMessages(system: string, messages: Msg[]) {
@@ -18,6 +19,9 @@ export function toOpenAIMessages(system: string, messages: Msg[]) {
   return out
 }
 
+/** Endpoints that turned down a reasoning-effort setting once; we stop sending it to them. */
+const noEffort = new Set<string>()
+
 /** Works with OpenAI and anything that speaks /chat/completions (OpenRouter, Groq, Ollama, vLLM, ...). */
 export function openaiProvider(profile: Profile, apiKey?: string): Provider {
   const base = (profile.baseUrl || DEFAULT_BASE_URLS.openai).replace(/\/+$/, '')
@@ -33,7 +37,25 @@ export function openaiProvider(profile: Profile, apiKey?: string): Provider {
         body.tools = req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }))
       }
       const headers: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {}
-      const res = await postJson(`${base}/chat/completions`, headers, body, req.signal)
+      // Reasoning models (o-series, gpt-5, gpt-oss) take an effort level; OpenRouter spells it differently.
+      const key = `${base}|${profile.model}`
+      const levels = noEffort.has(key) ? null : effortLevels('openai', profile.model)
+      const level = levels ? clampEffort(req.effort ?? 'auto', levels) : null
+      if (level) {
+        if (base.includes('openrouter.ai')) body.reasoning = { effort: level }
+        else body.reasoning_effort = level
+      }
+      let res: Response
+      try {
+        res = await postJson(`${base}/chat/completions`, headers, body, req.signal)
+      } catch (e: any) {
+        // A server that does not know the setting: remember, and ask again without it.
+        if (!level || !/API error 4\d\d/.test(e?.message ?? '') || !/reasoning|effort|unsupported|unrecognized|unknown/i.test(e?.message ?? '')) throw e
+        noEffort.add(key)
+        delete body.reasoning_effort
+        delete body.reasoning
+        res = await postJson(`${base}/chat/completions`, headers, body, req.signal)
+      }
 
       let text = ''
       let thinking = ''

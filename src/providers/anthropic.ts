@@ -1,5 +1,6 @@
 import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
+import { claudeMaxTokens, claudeThinking, clampEffort, effortLevels, thinkingBudget } from '../effort.js'
 import { parseArgs, postJson, sseData } from './sse.js'
 
 export function toAnthropicMessages(messages: Msg[]) {
@@ -24,34 +25,75 @@ export function toAnthropicMessages(messages: Msg[]) {
   return out
 }
 
-/** Models that rejected extended thinking once; we stop asking them. */
-const noThinking = new Set<string>()
-const THINKING_BUDGET = 4000
+/**
+ * What each model has told us it will not accept, remembered for the session so we only ask once.
+ * Reasoning settings differ a lot between Claude generations (adaptive vs a token budget, effort or none),
+ * so instead of trusting a table we start from the best guess and let the API correct us.
+ */
+const rejected = new Map<string, Set<string>>()
+const note = (model: string, what: string) => (rejected.get(model) ?? rejected.set(model, new Set()).get(model)!).add(what)
+const has = (model: string, what: string) => rejected.get(model)?.has(what) ?? false
+
+type Mode = 'adaptive' | 'budget' | 'none'
+
+function pickMode(model: string): Mode {
+  const pref = claudeThinking(model)
+  const order: Mode[] = pref === 'budget' ? ['budget', 'adaptive'] : ['adaptive', 'budget']
+  return order.find((m) => !has(model, m)) ?? 'none'
+}
+
+/** The reasoning part of a request for this model, given the user's effort setting. */
+export function reasoningParams(model: string, effort: ChatRequest['effort'], maxTokens: number) {
+  const mode = pickMode(model)
+  const levels = has(model, 'effort') ? null : effortLevels('anthropic', model)
+  const level = levels ? clampEffort(effort ?? 'auto', levels) : null
+  const out: { thinking?: any; output_config?: any; mode: Mode } = { mode }
+  if (mode === 'adaptive') out.thinking = has(model, 'display') ? { type: 'adaptive' } : { type: 'adaptive', display: 'summarized' }
+  else if (mode === 'budget') out.thinking = { type: 'enabled', budget_tokens: thinkingBudget(level, maxTokens) }
+  if (level) out.output_config = { effort: level }
+  return out
+}
 
 export function anthropicProvider(profile: Profile, apiKey?: string): Provider {
   const base = (profile.baseUrl || DEFAULT_BASE_URLS.anthropic).replace(/\/+$/, '')
   return {
     async chat(req: ChatRequest, onText, onThinking): Promise<ChatResult> {
+      const model = profile.model
       const body: any = {
-        model: profile.model,
-        max_tokens: 8192,
+        model,
+        max_tokens: has(model, 'max_tokens') ? 8192 : claudeMaxTokens(model),
         system: req.system,
         messages: toAnthropicMessages(req.messages),
         stream: true,
       }
       if (req.tools.length) body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
-      if (!noThinking.has(profile.model)) body.thinking = { type: 'enabled', budget_tokens: THINKING_BUDGET }
-      const send = () => postJson(`${base}/v1/messages`, { 'x-api-key': apiKey ?? '', 'anthropic-version': '2023-06-01' }, body, req.signal)
-      let res: Response
-      try {
-        res = await send()
-      } catch (e: any) {
-        // Older or smaller models do not support extended thinking: remember that and retry without it.
-        if (!body.thinking || !/thinking|budget_tokens/i.test(e?.message ?? '')) throw e
-        noThinking.add(profile.model)
+      const apply = () => {
         delete body.thinking
-        res = await send()
+        delete body.output_config
+        const { mode: _mode, ...reasoning } = reasoningParams(model, req.effort, body.max_tokens)
+        Object.assign(body, reasoning)
       }
+      apply()
+
+      const send = () => postJson(`${base}/v1/messages`, { 'x-api-key': apiKey ?? '', 'anthropic-version': '2023-06-01' }, body, req.signal)
+      let res: Response | undefined
+      for (let attempt = 0; attempt < 5 && !res; attempt++) {
+        try {
+          res = await send()
+        } catch (e: any) {
+          const msg: string = e?.message ?? ''
+          if (!/API error 400/.test(msg)) throw e
+          // Work out which setting the model objected to, remember it, and try again without it.
+          if (body.thinking && /thinking|budget_tokens|adaptive/i.test(msg)) {
+            if (/display/i.test(msg) && body.thinking.display) note(model, 'display')
+            else note(model, body.thinking.type === 'adaptive' ? 'adaptive' : 'budget')
+          } else if (body.output_config && /effort|output_config/i.test(msg)) note(model, 'effort')
+          else if (/max_tokens/i.test(msg) && body.max_tokens > 8192) note(model, 'max_tokens'), (body.max_tokens = 8192)
+          else throw e
+          apply()
+        }
+      }
+      if (!res) throw new Error('The model rejected every reasoning setting we tried.')
 
       let text = ''
       let thinking = ''

@@ -3,6 +3,7 @@ import { h, icon, tildify, type IconName } from './dom.js'
 import { Frog, SAYINGS } from './frog.js'
 import { renderMarkdown } from './markdown.js'
 import { openModelMenu } from './models.js'
+import { clampEffort, type Effort } from '../effort.js'
 import { refreshFiles, refreshGit } from './side.js'
 import { appendOutput, cleanShell, elapsed } from './run.js'
 import type { RunKind } from '../shared/ipc.js'
@@ -38,6 +39,7 @@ interface Mounted {
   frog: Frog
   mode: HTMLButtonElement
   chip: HTMLButtonElement
+  effort: HTMLButtonElement
   hero: HTMLElement | null
   stick: boolean
 }
@@ -526,8 +528,9 @@ export function showChat(view: ChatView, root: HTMLElement) {
 
   const mode = h('button', { class: 'mode no-drag', type: 'button', onClick: () => toggleModeMenu() })
   const chip = h('button', { class: 'chip no-drag', type: 'button', onClick: () => openModelMenu(chip, composerWrap) })
+  const effort = h('button', { class: 'effort no-drag', type: 'button', onClick: () => toggleEffortMenu() })
   const composerWrap = h('div', { class: 'composer-wrap' })
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, hero: null, stick: true }
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, hero: null, stick: true }
   const mounted = m
 
   input.value = view.draft
@@ -629,6 +632,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
         ? h('span', { class: 'cwd' })
         : h('span', { class: 'cwd', 'data-tip': tildify(view.cwd, state.home) }, folder?.name ?? tildify(view.cwd, state.home)),
       plain || !folder ? null : instructionChip(folder.instructions, input),
+      effort,
       chip,
     ),
   )
@@ -666,6 +670,61 @@ export function refreshMode() {
   const model = demo ? 'demo model' : (profiles.find((p) => p.active)?.model ?? 'no model')
   m.chip.dataset.tip = 'Switch model'
   m.chip.replaceChildren(h('span', null, model), icon('chevronDown', 11))
+
+  // Effort only shows when the current model has such a setting.
+  const levels = demo ? [] : (profiles.find((p) => p.active)?.efforts ?? [])
+  m.effort.hidden = !levels.length
+  if (levels.length) {
+    const now = effectiveEffort(levels)
+    m.effort.dataset.tip = 'Reasoning effort'
+    m.effort.replaceChildren(icon('sparkle', 13), h('span', null, EFFORT_LABEL[now]), icon('chevronDown', 11))
+  }
+}
+
+const EFFORT_LABEL: Record<Effort, string> = { auto: 'Auto', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }
+const EFFORT_DESC: Record<Effort, string> = {
+  auto: 'Let the model decide how much to think.',
+  low: 'Fastest. Little thinking.',
+  medium: 'Balanced for everyday work.',
+  high: 'Thinks carefully. Good for coding.',
+  xhigh: 'Extra depth for hard problems.',
+  max: 'Deepest and slowest.',
+}
+
+/** What will actually be sent: the chosen level, or the nearest one this model accepts. */
+function effectiveEffort(levels: Effort[]): Effort {
+  const want = store.state.effort
+  return want === 'auto' ? 'auto' : (clampEffort(want, levels) ?? 'auto')
+}
+
+function toggleEffortMenu() {
+  const existing = document.querySelector('.effort-menu')
+  if (existing) return existing.remove()
+  const levels = store.state.profiles.find((p) => p.active)?.efforts ?? []
+  if (!levels.length || !m) return
+  const now = effectiveEffort(levels)
+  const close = () => {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', esc, true)
+  }
+  const outside = (e: MouseEvent) => !menu.contains(e.target as Node) && !m?.effort.contains(e.target as Node) && close()
+  const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), close())
+  const menu = h(
+    'div',
+    { class: 'effort-menu', role: 'menu' },
+    (['auto', ...levels] as Effort[]).map((l) =>
+      h(
+        'button',
+        { class: `mode-item ${l === now ? 'on' : ''}`, type: 'button', role: 'menuitemradio', onClick: () => (void croo.setEffort(l), close()) },
+        h('span', { class: 'mode-text' }, h('b', null, EFFORT_LABEL[l]), h('small', null, EFFORT_DESC[l])),
+        l === now ? icon('check', 15) : null,
+      ),
+    ),
+  )
+  m.mode.closest('.composer-wrap')?.append(menu)
+  document.addEventListener('mousedown', outside, true)
+  document.addEventListener('keydown', esc, true)
 }
 
 /** Which AGENTS.md / CLAUDE.md files Croo is reading here, or a nudge to create one. */
