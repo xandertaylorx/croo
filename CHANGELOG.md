@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1
+
+- **ripgrep is bundled again**: the 0.15.0 build skipped ripgrep after a failed download, so search fell back to the slower built-in walker. The download now retries, and a release build fails rather than shipping without it
+
 ## 0.15.0
 
 - **MCP servers**: Settings → MCP connects Model Context Protocol servers, local commands or remote URLs, and the agent can use their tools in Code mode. Paste a command, a URL, or the usual `{"mcpServers": ...}` JSON from Claude, Cursor or VS Code. Each server shows its status and tools, and can be turned off, reconnected or removed. Tokens in `env` and `headers` are encrypted with your keychain. In Auto mode Croo asks before each MCP tool call unless the server marks the tool read-only

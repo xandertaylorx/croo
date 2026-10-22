@@ -75,9 +75,20 @@ if (fs.existsSync(path.join(rgout, 'rg')) && fs.existsSync(rgstamp) && fs.readFi
     const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${name}.tar.gz`
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-rg-'))
     console.log(`fetching ${url}`)
-    const res = await fetch(url, { redirect: 'follow' })
-    if (!res.ok) throw new Error(`download failed: ${res.status}`)
-    fs.writeFileSync(path.join(tmp, 'rg.tgz'), Buffer.from(await res.arrayBuffer()))
+    // GitHub's release downloads fail now and then on CI runners; try a few times.
+    let data
+    for (let i = 1; !data; i++) {
+      try {
+        const res = await fetch(url, { redirect: 'follow' })
+        if (!res.ok) throw new Error(`download failed: ${res.status}`)
+        data = Buffer.from(await res.arrayBuffer())
+      } catch (e) {
+        if (i >= 4) throw new Error(`${e.message}${e.cause ? ` (${e.cause.code ?? e.cause.message})` : ''}`)
+        console.log(`  attempt ${i} failed (${e.message}), retrying`)
+        await new Promise((r) => setTimeout(r, 2000 * i))
+      }
+    }
+    fs.writeFileSync(path.join(tmp, 'rg.tgz'), data)
     execFileSync('tar', ['xzf', path.join(tmp, 'rg.tgz'), '-C', tmp])
     fs.rmSync(rgout, { recursive: true, force: true })
     fs.mkdirSync(rgout, { recursive: true })
@@ -87,6 +98,8 @@ if (fs.existsSync(path.join(rgout, 'rg')) && fs.existsSync(rgstamp) && fs.readFi
     fs.rmSync(tmp, { recursive: true, force: true })
     console.log(`ripgrep ready in ${rgout}`)
   } catch (e) {
+    // A release must not ship without it by accident.
+    if (process.env.CI) throw new Error(`Could not fetch ripgrep: ${e.message}`)
     console.log(`Skipping ripgrep (${e.message}). Search will use the built-in walker.`)
   }
 }

@@ -23,7 +23,10 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 
 **Code** mode gives each project folder its own chats and lets the agent read, search, edit and run things in it. **Chat** mode is a plain conversation with no folder and no tools. You decide how much the agent may do on its own, and everything it does is visible: diffs, commands, output, reasoning, time and tokens.
 
-## What’s new in 0.15.0
+## What’s new in 0.15.1
+
+The app bundles ripgrep again (0.15.0 shipped without it by accident). From 0.15.0:
+
 
 Croo can now use tools from **MCP servers** (Settings → MCP), and a ring at the top right of each chat shows how full the model's context is. Long tasks keep going: older messages are summarized automatically when the context fills up, and Claude's prompt caching makes long runs much cheaper. Search uses a bundled ripgrep, and the agent gained `multi_edit`, `web_fetch` and `todo_write` tools plus a rewritten system prompt. See the [changelog](CHANGELOG.md) for details.
 
@@ -113,8 +116,8 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 Update `CHANGELOG.md` and `README.md`, bump the version in `package.json` and `package-lock.json` with `npm version <version> --no-git-tag-version`, and commit. Push the commit and matching version tag; GitHub Actions checks types, runs tests, builds the macOS app and attaches the installers to a GitHub Release:
 
 ```bash
-git tag v0.15.0
-git push origin main v0.15.0
+git tag v0.15.1
+git push origin main v0.15.1
 ```
 
 The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, the button says so and you download the update yourself. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.
