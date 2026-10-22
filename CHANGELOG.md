@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.2
+
+- Small models that write a tool call out as text (`{"name":"bash",...}`, a fenced block or a `<tool_call>` tag) instead of using the tool channel now work: Croo recognises the call for the tools it offered and runs it through the usual approval step. The agent is also told to act with tools rather than print commands for you to run
+
 ## 0.12.1
 
 - **Math renders**: LaTeX in replies (`$x^2$`, `$$…$$`, `\(…\)`, `\[…\]`) is typeset with KaTeX instead of showing raw `$$` and backslashes; prices like `$5 and $10` are left alone

@@ -33,6 +33,30 @@ export class Cancelled extends Error {
   }
 }
 
+/**
+ * Small models often write a tool call out as text (`{"name":"bash","arguments":{...}}` or a <tool_call> tag)
+ * instead of using the tool channel. Recognise those for the tools we actually offered, and return the
+ * text without them. They still go through the normal approval step.
+ */
+export function extractTextToolCalls(text: string, names: string[]): { calls: ToolCall[]; rest: string } {
+  const calls: ToolCall[] = []
+  const take = (json: string): boolean => {
+    try {
+      const o = JSON.parse(json)
+      const args = o?.arguments ?? o?.parameters ?? o?.args
+      if (typeof o?.name !== 'string' || !names.includes(o.name) || !args || typeof args !== 'object') return false
+      calls.push({ id: `text-${calls.length}-${Date.now().toString(36)}`, name: o.name, args })
+      return true
+    } catch {
+      return false
+    }
+  }
+  let rest = text.replace(/<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/g, (m, j) => (take(j) ? '' : m))
+  rest = rest.replace(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/g, (m, j) => (take(j) ? '' : m))
+  if (!calls.length && /^\s*\{[\s\S]*\}\s*$/.test(rest) && take(rest.trim())) rest = ''
+  return { calls, rest: rest.trim() }
+}
+
 /** Run the model/tool loop until the model stops calling tools. Mutates `messages`. */
 export async function runTurn(o: TurnOptions): Promise<void> {
   const { hooks, signal } = o
@@ -52,6 +76,10 @@ export async function runTurn(o: TurnOptions): Promise<void> {
     }
     hooks.onTextEnd()
     hooks.onUsage(res.usage)
+    if (!res.toolCalls.length) {
+      const found = extractTextToolCalls(res.text, (o.tools ?? TOOLS).map((t) => t.spec.name))
+      if (found.calls.length) res = { ...res, text: found.rest, toolCalls: found.calls }
+    }
     o.messages.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined, thinking: res.thinking || undefined, meta: res.meta })
     if (!res.toolCalls.length) return
 

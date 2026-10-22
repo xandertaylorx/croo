@@ -31,3 +31,18 @@ describe('chat export', () => {
     expect(exportName('Fix: the bug!')).toBe('Fix-the-bug.md')
   })
 })
+
+import { extractTextToolCalls } from '../src/agent.js'
+
+describe('tool calls written as text', () => {
+  const names = ['bash', 'read_file']
+  it('finds JSON, fenced JSON and <tool_call> forms', () => {
+    expect(extractTextToolCalls('{"name":"bash","arguments":{"command":"ls"}}', names).calls[0]).toMatchObject({ name: 'bash', args: { command: 'ls' } })
+    expect(extractTextToolCalls('Sure.\n```json\n{"name": "read_file", "arguments": {"path": "a.ts"}}\n```', names)).toMatchObject({ rest: 'Sure.', calls: [{ name: 'read_file' }] })
+    expect(extractTextToolCalls('<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>', names).calls).toHaveLength(1)
+  })
+  it('ignores tools we did not offer and ordinary text', () => {
+    expect(extractTextToolCalls('{"name":"delete","arguments":{"path":"."}}', names).calls).toHaveLength(0)
+    expect(extractTextToolCalls('use {"a": 1} here', names).calls).toHaveLength(0)
+  })
+})
