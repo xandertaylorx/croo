@@ -2,7 +2,7 @@
 
 ## 0.8.0
 
-- **Website** in `web/`, published to GitHub Pages: live latest-release download button, install commands, screenshots and features
+- **Website** in `web/`, a static site: live latest-release download button, install commands, screenshots and features
 - The model is now told which model it is, so small local models stop claiming to be GPT-4
 - Sent attachments are cards above your message (image thumbnails you can open, file cards with type and size); `@file` mentions show as chips
 - Replies read better: formatting guidance for the model, task lists and auto-linked URLs, cleaner headings, tables and quotes, and a copy button on every reply

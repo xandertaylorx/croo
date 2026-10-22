@@ -11,7 +11,7 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 ![License](https://img.shields.io/badge/license-MIT-5ed67e?style=flat-square)
 ![Electron](https://img.shields.io/badge/built%20with-Electron-5ed67e?style=flat-square)
 
-[Website](https://xandertaylorx.github.io/croo/) · [Features](#features) · [Run it](#run-it) · [Providers](#providers-and-keys) · [Shortcuts](#shortcuts)
+[Website](https://ai.crooli.com/) · [Features](#features) · [Run it](#run-it) · [Providers](#providers-and-keys) · [Shortcuts](#shortcuts)
 
 <br>
 
