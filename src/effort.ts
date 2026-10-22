@@ -52,7 +52,7 @@ export function effortLevels(type: ProviderType, model: string): Effort[] | null
     return null
   }
   // OpenAI and compatibles: reasoning models take reasoning_effort.
-  return /^(o\d|gpt-5|gpt-oss)/.test(id) ? ['low', 'medium', 'high'] : null
+  return /^(o\d|gpt-([5-9]|\d\d)|gpt-oss)/.test(id) ? ['low', 'medium', 'high'] : null
 }
 
 /** The highest supported level that does not exceed the request (or the lowest one if it is below them all). */

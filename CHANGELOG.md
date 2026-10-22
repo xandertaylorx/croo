@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.1
+
+- **Newer OpenAI models work**: Croo now talks to OpenAI through the Responses API, so models like gpt-6.x take tools and a reasoning effort together instead of failing with "Function tools with reasoning_effort are not supported" or "not supported in the v1/chat/completions endpoint". Reasoning summaries show in the Thinking row. Other OpenAI-compatible servers (Groq, OpenRouter, Ollama, LM Studio) are unchanged
+
 ## 0.14.0
 
 - **Quieter, more minimal look**: warm neutral greys in place of the green tint, with green kept for the frog and for success. Buttons, the send button and selected options use plain ink instead of green, corners are tighter, the message box is flat with a hairline border, and the soft glows are gone

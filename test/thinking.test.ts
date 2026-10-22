@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { anthropicProvider, toAnthropicMessages } from '../src/providers/anthropic.js'
 import { openaiProvider } from '../src/providers/openai.js'
+import { responsesProvider, toResponsesInput, usesResponses } from '../src/providers/responses.js'
 import { INSTRUCTION_FILES, INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, loadProjectInstructions } from '../src/prompt.js'
 import { toItems } from '../src/transcript.js'
 import { clampEffort, claudeThinking, effortLevels, parseClaude, thinkingBudget } from '../src/effort.js'
@@ -51,6 +52,22 @@ beforeAll(async () => {
           { type: 'content_block_start', index: 1, content_block: { type: 'text' } },
           { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Done.' } },
           { type: 'message_delta', usage: { output_tokens: 7 } },
+        ])
+      } else if (req.url?.startsWith('/v1/responses')) {
+        if (parsed.model === 'gpt-6-unverified' && parsed.reasoning?.summary) {
+          res.writeHead(400)
+          return res.end('{"error":{"message":"Your organization must be verified to generate reasoning summaries."}}')
+        }
+        sse(res, [
+          { type: 'response.reasoning_summary_part.added' },
+          { type: 'response.reasoning_summary_text.delta', delta: 'Look first.' },
+          { type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'enc' } },
+          { type: 'response.output_text.delta', delta: 'On it.' },
+          { type: 'response.output_item.added', output_index: 2, item: { type: 'function_call', id: 'fc_1', call_id: 'call_a', name: 'read_file', arguments: '' } },
+          { type: 'response.function_call_arguments.delta', item_id: 'fc_1', delta: '{"path":' },
+          { type: 'response.function_call_arguments.delta', item_id: 'fc_1', delta: '"a.ts"}' },
+          { type: 'response.output_item.done', output_index: 2, item: { type: 'function_call', id: 'fc_1', call_id: 'call_a', name: 'read_file', arguments: '{"path":"a.ts"}' } },
+          { type: 'response.completed', response: { usage: { input_tokens: 3, output_tokens: 4 } } },
         ])
       } else {
         if (parsed.model === 'gpt-5-reject' && parsed.reasoning_effort) {
@@ -134,6 +151,7 @@ describe('reasoning settings per model', () => {
     expect(effortLevels('anthropic', 'claude-haiku-4-5')).toBeNull()
     expect(effortLevels('openai', 'o3-mini')).toEqual(['low', 'medium', 'high'])
     expect(effortLevels('openai', 'openai/gpt-5')).toEqual(['low', 'medium', 'high'])
+    expect(effortLevels('openai', 'gpt-6.1-sol')).toEqual(['low', 'medium', 'high'])
     expect(effortLevels('openai', 'gpt-4o')).toBeNull()
     expect(effortLevels('gemini', 'gemini-2.5-pro')).toEqual(['low', 'medium', 'high'])
     expect(effortLevels('gemini', 'gemini-1.5-flash')).toBeNull()
@@ -191,6 +209,44 @@ describe('reasoning settings per model', () => {
     const before = bodies.length
     expect((await chat('gpt-5-reject')).text).toBe('Answer')
     expect(bodies.slice(before).map((b) => b.reasoning_effort)).toEqual(['high', undefined])
+  })
+})
+
+describe('openai responses api', () => {
+  const tool = { name: 'read_file', description: 'Read a file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }
+  const chat = (model: string) => responsesProvider({ type: 'openai', model, baseUrl: `${base}/v1` }, 'k').chat({ ...req(), tools: [tool], effort: 'high' }, () => {})
+
+  it('is used for api.openai.com only', () => {
+    expect(usesResponses(undefined)).toBe(true)
+    expect(usesResponses('https://api.openai.com/v1')).toBe(true)
+    expect(usesResponses('https://openrouter.ai/api/v1')).toBe(false)
+    expect(usesResponses('http://localhost:11434/v1')).toBe(false)
+  })
+  it('streams text, reasoning summaries and tool calls, with tools and effort together', async () => {
+    const res = await chat('gpt-6.1-sol')
+    const body = bodies.at(-1)
+    expect(body.tools[0]).toEqual({ type: 'function', ...tool })
+    expect(body.reasoning).toEqual({ summary: 'auto', effort: 'high' })
+    expect(body.instructions).toBe('s')
+    expect(res.text).toBe('On it.')
+    expect(res.thinking).toBe('Look first.')
+    expect(res.toolCalls).toEqual([{ id: 'call_a', name: 'read_file', args: { path: 'a.ts' } }])
+    expect(res.usage).toEqual({ input: 3, output: 4 })
+    expect(res.meta).toEqual({ responses: [{ type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'enc' }] })
+  })
+  it('sends reasoning, calls and results back in order', () => {
+    const input = toResponsesInput([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'On it.', toolCalls: [{ id: 'call_a', name: 'read_file', args: { path: 'a.ts' } }], meta: { responses: [{ type: 'reasoning', id: 'rs_1' }] } },
+      { role: 'tool', toolCallId: 'call_a', name: 'read_file', content: 'x' },
+    ])
+    expect(input.map((i) => i.type ?? i.role)).toEqual(['user', 'reasoning', 'assistant', 'function_call', 'function_call_output'])
+    expect(input[3]).toEqual({ type: 'function_call', call_id: 'call_a', name: 'read_file', arguments: '{"path":"a.ts"}' })
+  })
+  it('retries without reasoning settings when they are refused', async () => {
+    const before = bodies.length
+    expect((await chat('gpt-6-unverified')).text).toBe('On it.')
+    expect(bodies.slice(before).map((b) => !!b.reasoning)).toEqual([true, false])
   })
 })
 
