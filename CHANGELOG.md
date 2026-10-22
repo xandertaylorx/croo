@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- **Git panel** (`⌘⇧G`): branch and sync state, changed files with line counts and inline diffs, pick files, commit (`⌘↵`), push (publishes a new branch), pull (fast-forward only), `git init` for plain folders; change-count badge on the header button
+- **Run code from the chat**: shell, Python and Node snippets get a Run button; output streams live under the block with exit code and timing, and Run turns into Stop while it runs
+- Chat / Code switch is now two icons (with tooltips)
+
 ## 0.4.0
 
 - **Chat and Code modes**: a switch at the top of the sidebar. Chat is plain conversation with a flat chat list; Code is folders plus the agent

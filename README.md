@@ -23,7 +23,7 @@ Build a distributable with `npm run dist` (macOS `.dmg` and `.zip` in `release/`
 
 ## Chat and Code
 
-The switch at the top of the sidebar changes what the app is for:
+The two icons at the top of the sidebar change what the app is for:
 
 - **Code** (`⌘2`): the sidebar lists your folders, each with its own chats. The agent has tools, the terminal, the file browser and the in-app browser.
 - **Chat** (`⌘1`): the sidebar is just a list of conversations. No folders, no tools, no permission prompts.
@@ -38,6 +38,8 @@ The switch at the top of the sidebar changes what the app is for:
 - **Approve changes** with the buttons on the card, `⌘↵` to allow, `esc` to deny.
 - **Terminal** (`⌘J`): a real shell in the current folder. `⌘T` opens a new tab while the terminal is focused, `⌘⇧[` / `⌘⇧]` switch tabs, `⌘K` clears.
 - **Files** (`⌘⇧E`): a tree of the folder (it respects `.gitignore`) with a syntax-highlighted viewer. Send a file to the composer as `@path`, or reveal it in Finder.
+- **Git** (`⌘⇧G`): the branch and sync state, every changed file with `+/−` counts, and an inline diff when you click one. Tick the files you want, write a message, **Commit** (`⌘↵`), then **Push** (it publishes a new branch for you) or **Pull** (fast-forward only). The button in the header shows how many files changed. If a folder is not a repository, one click runs `git init`.
+- **Run code from the chat**: shell, Python and Node snippets in a reply get a **Run** button. It runs in the current folder, streams the output right under the block, shows the exit code and time, and turns into **Stop** while it runs. Your click is the approval, so it works in any permission mode.
 - **Browser** (`⌘⇧B`): a minimal in-app browser for previewing what you build. The start page lists dev servers running on your machine. Anything you type that is not an address is searched with DuckDuckGo.
 - Hover any button to see what it does and its shortcut.
 
@@ -74,6 +76,7 @@ Croo works with API keys and OpenAI-compatible endpoints. It does not use anyone
 | `⌘J` | Toggle terminal (`⌘T` new tab while focused) |
 | `⌘⇧E` | Toggle files |
 | `⌘⇧B` | Toggle browser |
+| `⌘⇧G` | Toggle git |
 | `⇧Tab` | Cycle permission mode |
 | `⌘↵` / `esc` | Allow / deny an approval |
 | `⌘,` | Settings |
@@ -83,7 +86,7 @@ Poke the frog. Leave it alone long enough and it falls asleep.
 ## Layout
 
 ```
-src/main/       Electron main process, sandboxed preload bridge, terminal (node-pty)
+src/main/       Electron main process, sandboxed preload bridge, terminal (node-pty), git, code runner
 src/renderer/   The UI: plain TypeScript and CSS, no framework
                 (frog.ts is the mascot, side.ts the files/browser panel, terminal.ts the shell)
 src/agent.ts    Model/tool loop         src/providers/   OpenAI, Anthropic, Gemini

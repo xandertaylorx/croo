@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppState, ChatEvent, Command, CrooApi } from '../shared/ipc.js'
+import type { AppState, ChatEvent, Command, CrooApi, RunExit } from '../shared/ipc.js'
 
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args)
 
@@ -26,6 +26,16 @@ const api: CrooApi = {
   reveal: (cwd, rel) => invoke('fs:reveal', cwd, rel),
   openExternal: (url) => invoke('shell:open', url),
   probePorts: () => invoke('browser:ports'),
+  gitStatus: (cwd) => invoke('git:status', cwd),
+  gitDiff: (cwd, file, untracked) => invoke('git:diff', cwd, file, untracked),
+  gitCommit: (cwd, paths, message) => invoke('git:commit', cwd, paths, message),
+  gitPush: (cwd, hasUpstream) => invoke('git:push', cwd, hasUpstream),
+  gitPull: (cwd) => invoke('git:pull', cwd),
+  gitInit: (cwd) => invoke('git:init', cwd),
+  runCode: (cwd, kind, code) => invoke('run:start', cwd, kind, code),
+  runStop: (id) => ipcRenderer.send('run:stop', id),
+  onRunData: (cb) => void ipcRenderer.on('run:data', (_e, m: { id: string; data: string }) => cb(m.id, m.data)),
+  onRunExit: (cb) => void ipcRenderer.on('run:exit', (_e, m: RunExit) => cb(m)),
   termCreate: (cwd, cols, rows) => invoke('term:create', cwd, cols, rows),
   termWrite: (id, data) => ipcRenderer.send('term:write', id, data),
   termResize: (id, cols, rows) => ipcRenderer.send('term:resize', id, cols, rows),

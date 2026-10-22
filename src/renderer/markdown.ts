@@ -1,4 +1,5 @@
 import { highlight } from './highlight.js'
+import { runKind } from './run.js'
 
 /** Small markdown → HTML renderer for chat replies. Everything is escaped first; only known tags are emitted. */
 
@@ -38,8 +39,12 @@ export function renderMarkdown(src: string): string {
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++])
       i++ // closing fence (a streaming reply may not have one yet)
       const lang = fence[2]
+      const kind = runKind(lang)
+      const run = kind
+        ? `<button class="code-run" type="button" data-kind="${kind}"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><span>Run</span></button>`
+        : ''
       out.push(
-        `<div class="code"><div class="code-head"><span>${esc(lang)}</span><button class="code-copy" type="button">Copy</button></div><pre><code class="hljs">${highlight(body.join('\n'), lang)}</code></pre></div>`,
+        `<div class="code"><div class="code-head"><span>${esc(lang)}</span><span class="code-actions">${run}<button class="code-copy" type="button">Copy</button></span></div><pre><code class="hljs">${highlight(body.join('\n'), lang)}</code></pre></div>`,
       )
       continue
     }

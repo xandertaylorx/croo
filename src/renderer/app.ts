@@ -1,5 +1,5 @@
 import type { AppState, ChatKind } from '../shared/ipc.js'
-import { answerPending, currentChat, focusComposer, handleEvent, refreshHeader, refreshMode, showChat } from './chat.js'
+import { answerPending, currentChat, focusComposer, handleEvent, initRuns, refreshHeader, refreshMode, showChat } from './chat.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
 import { renderOnboarding, openSettings, refreshSettings } from './setup.js'
@@ -157,6 +157,7 @@ async function boot() {
   if (remember.get('sidebar') === 'hidden') document.getElementById('app')!.classList.add('sidebar-hidden')
 
   initTooltips()
+  initRuns()
   initSide()
   initTerminal({ getCwd: currentFolder })
   croo.onState(onState)
@@ -173,6 +174,7 @@ async function boot() {
     else if (c === 'toggleTerminal') bus.terminal()
     else if (c === 'toggleFiles') store.mode === 'code' && bus.files()
     else if (c === 'toggleBrowser') store.mode === 'code' && bus.browser()
+    else if (c === 'toggleGit') store.mode === 'code' && bus.git()
     else if (c === 'modeChat') setMode('chat')
     else if (c === 'modeCode') setMode('code')
     else if (c === 'toggleSidebar') {

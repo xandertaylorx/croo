@@ -83,6 +83,38 @@ export interface FsFile {
 
 export type ChatKind = 'chat' | 'code'
 
+export interface GitFile {
+  path: string
+  /** Status letters from `git status`: X is the index, Y the working tree ("?" = untracked). */
+  index: string
+  work: string
+  orig?: string
+  add?: number
+  del?: number
+}
+
+export interface GitStatus {
+  repo: boolean
+  branch: string
+  upstream?: string
+  ahead: number
+  behind: number
+  files: GitFile[]
+}
+
+export interface GitResult {
+  ok: boolean
+  output: string
+}
+
+export interface RunExit {
+  id: string
+  code: number | null
+  signal: string | null
+}
+
+export type RunKind = 'shell' | 'python' | 'node'
+
 export interface AppState {
   platform: string
   home: string
@@ -109,7 +141,7 @@ export interface AddProfileRequest {
 
 export type Result = { ok: true } | { ok: false; error: string }
 
-export type Command = 'newChat' | 'addFolder' | 'settings' | 'toggleSidebar' | 'toggleTerminal' | 'toggleFiles' | 'toggleBrowser' | 'modeChat' | 'modeCode'
+export type Command = 'newChat' | 'addFolder' | 'settings' | 'toggleSidebar' | 'toggleTerminal' | 'toggleFiles' | 'toggleBrowser' | 'toggleGit' | 'modeChat' | 'modeCode'
 
 export interface CrooApi {
   getState(): Promise<AppState>
@@ -135,6 +167,17 @@ export interface CrooApi {
   openExternal(url: string): Promise<void>
   /** Local dev servers that are currently listening. */
   probePorts(): Promise<number[]>
+  gitStatus(cwd: string): Promise<GitStatus>
+  gitDiff(cwd: string, file: string, untracked: boolean): Promise<string>
+  gitCommit(cwd: string, paths: string[], message: string): Promise<GitResult>
+  gitPush(cwd: string, hasUpstream: boolean): Promise<GitResult>
+  gitPull(cwd: string): Promise<GitResult>
+  gitInit(cwd: string): Promise<GitResult>
+  /** Run a snippet from the chat in the folder; output streams back through onRunData / onRunExit. */
+  runCode(cwd: string, kind: RunKind, code: string): Promise<string>
+  runStop(id: string): void
+  onRunData(cb: (id: string, data: string) => void): void
+  onRunExit(cb: (e: RunExit) => void): void
   termCreate(cwd: string, cols: number, rows: number): Promise<string>
   termWrite(id: string, data: string): void
   termResize(id: string, cols: number, rows: number): void

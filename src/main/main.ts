@@ -13,10 +13,12 @@ import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
 import { PRESETS } from '../providers/presets.js'
 import { deleteSession, listSessions, loadSession, newSession, saveSession, titleFrom, type Session, type SessionMeta } from '../session.js'
-import type { AddProfileRequest, AppState, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result } from '../shared/ipc.js'
+import type { AddProfileRequest, AppState, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result, RunKind } from '../shared/ipc.js'
 import { Ignore } from '../tools/ignore.js'
 import { safePath } from '../tools/index.js'
 import { clip, toItems, toPreviewDto } from '../transcript.js'
+import { gitCommit, gitDiff, gitInit, gitPull, gitPush, gitStatus } from './git.js'
+import { Runner } from './runner.js'
 import { Terminals } from './terminal.js'
 import type { Config, PermissionMode, Profile } from '../types.js'
 import { loadWorkspaces, saveWorkspaces } from '../workspaces.js'
@@ -41,6 +43,7 @@ interface Runtime {
 }
 const runtimes = new Map<string, Runtime>()
 const terminals = new Terminals()
+const runner = new Runner()
 
 const modelCache = new Map<string, { at: number; value: Awaited<ReturnType<typeof listModels>> }>()
 
@@ -448,6 +451,20 @@ function registerIpc() {
     inWorkspace(cwd)
     shell.showItemInFolder(safePath(cwd, rel || '.'))
   })
+  // Git and "run this snippet" act on a known folder only.
+  ipcMain.handle('git:status', (_e, cwd: string) => (inWorkspace(cwd), gitStatus(cwd)))
+  ipcMain.handle('git:diff', (_e, cwd: string, file: string, untracked: boolean) => (inWorkspace(cwd), safePath(cwd, file), gitDiff(cwd, file, untracked)))
+  ipcMain.handle('git:commit', (_e, cwd: string, paths: string[], message: string) => (inWorkspace(cwd), paths.forEach((p) => safePath(cwd, p)), gitCommit(cwd, paths, message)))
+  ipcMain.handle('git:push', (_e, cwd: string, hasUpstream: boolean) => (inWorkspace(cwd), gitPush(cwd, hasUpstream)))
+  ipcMain.handle('git:pull', (_e, cwd: string) => (inWorkspace(cwd), gitPull(cwd)))
+  ipcMain.handle('git:init', (_e, cwd: string) => (inWorkspace(cwd), gitInit(cwd)))
+  ipcMain.handle('run:start', (_e, cwd: string, kind: RunKind, code: string) => {
+    inWorkspace(cwd)
+    if (!['shell', 'python', 'node'].includes(kind) || typeof code !== 'string' || code.length > 200_000) throw new Error('Cannot run that.')
+    return runner.start(cwd, kind, code, (id, data) => send('run:data', { id, data }), (e) => send('run:exit', e))
+  })
+  ipcMain.on('run:stop', (_e, id: string) => runner.stop(id))
+
   ipcMain.handle('browser:ports', async () => {
     const probe = (port: number) =>
       new Promise<number | null>((resolve) => {
@@ -545,6 +562,7 @@ function buildMenu() {
         { label: 'Toggle Terminal', accelerator: 'CmdOrCtrl+J', click: cmd('toggleTerminal') },
         { label: 'Toggle Files', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('toggleFiles') },
         { label: 'Toggle Browser', accelerator: 'CmdOrCtrl+Shift+B', click: cmd('toggleBrowser') },
+        { label: 'Toggle Git', accelerator: 'CmdOrCtrl+Shift+G', click: cmd('toggleGit') },
         { type: 'separator' },
         { label: 'Chat Mode', accelerator: 'CmdOrCtrl+1', click: cmd('modeChat') },
         { label: 'Code Mode', accelerator: 'CmdOrCtrl+2', click: cmd('modeCode') },
@@ -598,5 +616,6 @@ else {
   app.on('before-quit', () => {
     for (const rt of runtimes.values()) stopChat(rt)
     terminals.killAll()
+    runner.stopAll()
   })
 }

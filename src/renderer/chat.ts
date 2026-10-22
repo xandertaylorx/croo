@@ -3,7 +3,9 @@ import { h, icon, tildify, type IconName } from './dom.js'
 import { Frog, SAYINGS } from './frog.js'
 import { renderMarkdown } from './markdown.js'
 import { openModelMenu } from './models.js'
-import { refreshFiles } from './side.js'
+import { refreshFiles, refreshGit } from './side.js'
+import { appendOutput, cleanShell, elapsed } from './run.js'
+import type { RunKind } from '../shared/ipc.js'
 import { bus, croo, store, type ChatView } from './store.js'
 import type { PermissionMode } from '../shared/ipc.js'
 
@@ -169,6 +171,137 @@ function renderPreview(p: PreviewDto): HTMLElement {
   return h('div', { class: 'diff' }, rows)
 }
 
+// ---------- running code from the chat ----------
+
+interface Run {
+  key: string
+  id?: string
+  kind: RunKind
+  out: string
+  status: 'running' | 'ok' | 'failed' | 'stopped'
+  exit?: number | null
+  t0: number
+  ms?: number
+  stopping?: boolean
+  el?: HTMLElement
+}
+const runs = new Map<string, Run>()
+const runById = new Map<string, Run>()
+const runDirty = new Set<Run>()
+let runRaf = 0
+
+const blockCode = (block: Element) => block.querySelector('code')?.textContent ?? ''
+const runKey = (viewId: string, kind: string, code: string) => `${viewId}|${kind}|${code}`
+
+function schedulePaint(r: Run) {
+  runDirty.add(r)
+  runRaf ||= requestAnimationFrame(() => {
+    runRaf = 0
+    for (const x of runDirty) paintRun(x)
+    runDirty.clear()
+  })
+}
+
+function paintRun(r: Run) {
+  const el = r.el
+  if (!el?.isConnected) return
+  const pre = el.querySelector<HTMLElement>('.run-text')!
+  const near = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40
+  pre.textContent = r.out || (r.status === 'running' ? '' : '(no output)')
+  if (near) pre.scrollTop = pre.scrollHeight
+  el.className = `run-out ${r.status}`
+  const status = el.querySelector<HTMLElement>('.run-status')!
+  const took = r.ms !== undefined ? ` · ${elapsed(r.ms)}` : ''
+  status.replaceChildren(
+    r.status === 'running' ? h('span', { class: 'spinner' }) : icon(r.status === 'ok' ? 'check' : r.status === 'stopped' ? 'stop' : 'x', 13),
+    h('span', null, r.status === 'running' ? 'Running…' : r.status === 'ok' ? `Finished${took}` : r.status === 'stopped' ? `Stopped${took}` : `Failed, exit ${r.exit ?? '?'}${took}`),
+  )
+  const btn = el.previousElementSibling?.querySelector<HTMLElement>('.code-run')
+  if (btn) {
+    const running = r.status === 'running'
+    btn.classList.toggle('stop', running)
+    btn.replaceChildren(running ? icon('stop', 11) : icon('play', 11), h('span', null, running ? 'Stop' : 'Run'))
+  }
+}
+
+function mountRun(block: Element, r: Run) {
+  let el = block.nextElementSibling as HTMLElement | null
+  if (!el?.classList.contains('run-out')) {
+    el = h(
+      'div',
+      { class: 'run-out' },
+      h(
+        'div',
+        { class: 'run-head' },
+        h('span', { class: 'run-status' }),
+        h('span', { class: 'push-right' }),
+        h('button', { class: 'icon-btn small', type: 'button', title: 'Copy output', onClick: () => void navigator.clipboard.writeText(r.out) }, icon('copy', 14)),
+        h('button', { class: 'icon-btn small', type: 'button', title: 'Hide output', onClick: () => (runs.delete(r.key), r.id && runById.delete(r.id), r.el?.remove()) }, icon('x', 14)),
+      ),
+      h('pre', { class: 'run-text', tabindex: 0 }),
+    )
+    block.after(el)
+  }
+  r.el = el
+  paintRun(r)
+}
+
+/** Put back the output panels under code blocks after a message was re-rendered. */
+function restoreRuns(root: ParentNode, viewId: string) {
+  for (const block of root.querySelectorAll('.code')) {
+    const btn = block.querySelector<HTMLElement>('.code-run')
+    if (!btn) continue
+    const r = runs.get(runKey(viewId, btn.dataset.kind ?? '', blockCode(block)))
+    if (r) mountRun(block, r)
+  }
+}
+
+async function runBlock(block: Element, btn: HTMLElement) {
+  if (!m || m.view.kind !== 'code') return
+  const view = m.view
+  const kind = btn.dataset.kind as RunKind
+  const code = blockCode(block)
+  const key = runKey(view.id, kind, code)
+  const prev = runs.get(key)
+  if (prev?.status === 'running') {
+    prev.stopping = true
+    if (prev.id) croo.runStop(prev.id)
+    return
+  }
+  if (prev?.id) runById.delete(prev.id)
+  const r: Run = { key, kind, out: '', status: 'running', t0: performance.now() }
+  runs.set(key, r)
+  mountRun(block, r)
+  try {
+    r.id = await croo.runCode(view.cwd, kind, kind === 'shell' ? cleanShell(code) : code)
+    runById.set(r.id, r)
+  } catch (e: any) {
+    r.status = 'failed'
+    r.out = String(e?.message ?? e)
+    schedulePaint(r)
+  }
+}
+
+export function initRuns() {
+  croo.onRunData((id, data) => {
+    const r = runById.get(id)
+    if (!r) return
+    r.out = appendOutput(r.out, data)
+    schedulePaint(r)
+  })
+  croo.onRunExit((e) => {
+    const r = runById.get(e.id)
+    if (!r) return
+    r.exit = e.code
+    r.ms = performance.now() - r.t0
+    r.status = r.stopping ? 'stopped' : e.code === 0 ? 'ok' : 'failed'
+    schedulePaint(r)
+    // A command may have changed files or the repository.
+    refreshFiles()
+    void refreshGit()
+  })
+}
+
 // ---------- live updates ----------
 
 function push(v: ChatView, item: Item) {
@@ -198,6 +331,7 @@ function touch(item: Item) {
   const el = renderItem(item)
   old.replaceWith(el)
   m.els.set(item, el)
+  restoreRuns(el, m.view.id)
   follow()
 }
 
@@ -207,7 +341,7 @@ function touchText(item: Item) {
     raf = 0
     for (const it of dirty) {
       const el = m?.els.get(it)
-      if (el && it.kind === 'assistant') el.innerHTML = renderMarkdown(it.text)
+      if (el && it.kind === 'assistant') (el.innerHTML = renderMarkdown(it.text), m && restoreRuns(el, m.view.id))
       else if (el && it.kind === 'thinking') touch(it)
     }
     dirty.clear()
@@ -306,6 +440,7 @@ export function handleEvent(ev: ChatEvent) {
       break
     case 'done':
       refreshFiles()
+      void refreshGit()
       endThinking(v)
       setStatus(v, 'idle', '', ev.seconds >= 1 ? `Done in ${ev.seconds.toFixed(1)}s` : 'Done')
       break
@@ -423,6 +558,12 @@ export function showChat(view: ChatView, root: HTMLElement) {
     mounted.stick = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80
   })
   thread.addEventListener('click', (e) => {
+    const runBtn = (e.target as HTMLElement).closest<HTMLElement>('.code-run')
+    if (runBtn) {
+      const block = runBtn.closest('.code')
+      if (block) void runBlock(block, runBtn)
+      return
+    }
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.code-copy')
     if (!btn) return
     const text = btn.closest('.code')?.querySelector('code')?.textContent ?? ''
@@ -452,6 +593,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
     thread.append(el)
   }
   thread.append(status)
+  restoreRuns(thread, view.id)
 
   root.replaceChildren(
     h(
@@ -468,6 +610,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
           : [
               h('span', { class: 'push-right' }),
               h('button', { class: 'icon-btn no-drag btn-files', type: 'button', title: 'Files (⌘⇧E)', onClick: () => bus.files() }, icon('folder', 17)),
+              h('button', { class: 'icon-btn no-drag btn-git', type: 'button', title: 'Git (⌘⇧G)', 'data-count': String(store.gitCount), onClick: () => bus.git() }, icon('branch', 17)),
               h('button', { class: 'icon-btn no-drag btn-browser', type: 'button', title: 'Browser (⌘⇧B)', onClick: () => bus.browser() }, icon('globe', 17)),
               h('button', { class: 'icon-btn no-drag btn-term', type: 'button', title: 'Terminal (⌘J)', onClick: () => bus.terminal() }, icon('terminal', 17)),
             ]),
@@ -484,7 +627,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
       plain ? null : mode,
       plain
         ? h('span', { class: 'cwd' })
-        : h('span', { class: 'cwd' }, tildify(view.cwd, state.home)),
+        : h('span', { class: 'cwd', 'data-tip': tildify(view.cwd, state.home) }, folder?.name ?? tildify(view.cwd, state.home)),
       plain || !folder ? null : instructionChip(folder.instructions, input),
       chip,
     ),

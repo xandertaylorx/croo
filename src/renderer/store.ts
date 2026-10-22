@@ -27,6 +27,8 @@ export const store = {
   /** Chat mode (plain conversations) or Code mode (folders and the agent). */
   mode: 'code' as ChatKind,
   active: null as string | null,
+  /** Changed files in the current folder (drives the badge on the Git button). */
+  gitCount: 0,
   views: new Map<string, ChatView>(),
 }
 
@@ -41,6 +43,7 @@ export const bus = {
   terminal: () => {},
   files: () => {},
   browser: () => {},
+  git: () => {},
   /** Insert text into the open composer, e.g. a file mention. */
   insert: (_text: string) => {},
 }

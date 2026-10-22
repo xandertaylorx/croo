@@ -56,7 +56,7 @@ function chatRow(c: ChatInfo): HTMLElement {
 
 function segmented(): HTMLElement {
   const btn = (kind: 'chat' | 'code', label: string, key: string) =>
-    h('button', { class: `seg-btn no-drag ${store.mode === kind ? 'on' : ''}`, type: 'button', role: 'tab', 'aria-selected': store.mode === kind, title: `${label} (${key})`, onClick: () => bus.mode(kind) }, icon(kind === 'chat' ? 'message' : 'code', 14), label)
+    h('button', { class: `seg-btn no-drag ${store.mode === kind ? 'on' : ''}`, type: 'button', role: 'tab', 'aria-selected': store.mode === kind, title: `${label} (${key})`, onClick: () => bus.mode(kind) }, icon(kind === 'chat' ? 'message' : 'code', 16))
   return h('div', { class: 'seg', role: 'tablist' }, btn('chat', 'Chat', '⌘1'), btn('code', 'Code', '⌘2'))
 }
 

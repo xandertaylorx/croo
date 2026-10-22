@@ -1,10 +1,11 @@
-import type { FsEntry, FsFile } from '../shared/ipc.js'
+import type { FsEntry, FsFile, GitFile, GitStatus } from '../shared/ipc.js'
 import { h, icon, tildify } from './dom.js'
 import { Frog } from './frog.js'
+import { parseDiff, statusLabel } from './gitdiff.js'
 import { highlight } from './highlight.js'
 import { bus, croo, remember, store } from './store.js'
 
-type Tab = 'files' | 'browser'
+type Tab = 'files' | 'browser' | 'git'
 
 let panel: HTMLElement
 let tab: Tab | null = null
@@ -35,6 +36,9 @@ export function initSide() {
   })
   bus.files = () => toggleSide('files')
   bus.browser = () => toggleSide('browser')
+  bus.git = () => toggleSide('git')
+  // Things change on disk while you are elsewhere: look again when the window comes back.
+  window.addEventListener('focus', () => void refreshGit())
   bus.insert = () => {}
 }
 
@@ -46,6 +50,7 @@ export function toggleSide(next: Tab) {
   a.classList.add('side-open')
   a.classList.toggle('side-files', next === 'files')
   a.classList.toggle('side-browser', next === 'browser')
+  a.classList.toggle('side-git', next === 'git')
   // Make room: on a narrow window the sidebar steps aside.
   if (window.innerWidth - (a.classList.contains('sidebar-hidden') ? 0 : 256) - panel.getBoundingClientRect().width < 420) a.classList.add('sidebar-hidden')
   render()
@@ -55,7 +60,7 @@ export function closeSide() {
   tab = null
   panel.hidden = true
   const a = app()
-  a.classList.remove('side-open', 'side-files', 'side-browser')
+  a.classList.remove('side-open', 'side-files', 'side-browser', 'side-git')
 }
 
 /** The code chat in front changed: the file tree follows its folder. */
@@ -63,8 +68,20 @@ export function setFolder(next: string | undefined) {
   if (next === cwd) return
   cwd = next
   tree.reset()
+  gitPanel.reset()
   if (!next) return closeSide()
-  if (tab === 'files') render()
+  void refreshGit()
+  if (tab === 'files' || tab === 'git') render()
+}
+
+/** Look at the repository again (after a turn, a command, or coming back to the window). */
+export async function refreshGit() {
+  if (!cwd) return
+  const at = cwd
+  try {
+    const st = await croo.gitStatus(at)
+    if (at === cwd) gitPanel.apply(st)
+  } catch {}
 }
 
 export function refreshFiles() {
@@ -74,6 +91,7 @@ export function refreshFiles() {
 function render() {
   const body = panel.querySelector<HTMLElement>('.side-body')!
   if (tab === 'files') body.replaceChildren(tree.view())
+  else if (tab === 'git') body.replaceChildren(gitPanel.view())
   else if (tab === 'browser') body.replaceChildren(browser.view())
   else body.replaceChildren()
   if (tab === 'browser') browser.focusAddress()
@@ -217,6 +235,233 @@ const tree = (() => {
     },
     get viewing() {
       return viewing
+    },
+  }
+})()
+
+// ---------- git ----------
+
+const gitPanel = (() => {
+  let status: GitStatus | null = null
+  const picked = new Set<string>()
+  const known = new Set<string>()
+  const open = new Set<string>()
+  const diffs = new Map<string, string>()
+  let message = ''
+  let busy: '' | 'commit' | 'push' | 'pull' = ''
+  let note: { ok: boolean; text: string } | null = null
+  let top: HTMLElement | null = null
+  let list: HTMLElement | null = null
+  let foot: HTMLElement | null = null
+  let box: HTMLTextAreaElement | null = null
+  let commitBtn: HTMLButtonElement
+  let pushBtn: HTMLButtonElement
+  let pullBtn: HTMLButtonElement
+  let noteEl: HTMLElement
+
+  const files = () => status?.files ?? []
+  const chosen = () => files().filter((f) => picked.has(f.path)).map((f) => f.path)
+
+  const setBadge = (n: number) => {
+    store.gitCount = n
+    for (const b of document.querySelectorAll<HTMLElement>('.btn-git')) b.dataset.count = String(n)
+  }
+
+  const apply = (s: GitStatus) => {
+    status = s
+    const present = new Set(s.files.map((f) => f.path))
+    for (const p of [...picked]) if (!present.has(p)) picked.delete(p)
+    for (const f of s.files) if (!known.has(f.path)) (known.add(f.path), picked.add(f.path)) // new changes start selected
+    diffs.clear()
+    setBadge(s.repo ? s.files.length : 0)
+    paint()
+  }
+
+  const load = async () => {
+    if (cwd) apply(await croo.gitStatus(cwd))
+  }
+
+  const run = async (kind: 'commit' | 'push' | 'pull') => {
+    if (!cwd || !status || busy) return
+    busy = kind
+    note = null
+    paintFoot()
+    const res =
+      kind === 'commit'
+        ? await croo.gitCommit(cwd, chosen(), message)
+        : kind === 'push'
+          ? await croo.gitPush(cwd, !!status.upstream)
+          : await croo.gitPull(cwd)
+    busy = ''
+    note = { ok: res.ok, text: res.output }
+    if (res.ok && kind === 'commit') {
+      message = ''
+      if (box) box.value = ''
+      open.clear()
+    }
+    await load()
+    refreshFiles()
+  }
+
+  const toggleOpen = async (f: GitFile) => {
+    if (open.has(f.path)) open.delete(f.path)
+    else {
+      open.add(f.path)
+      if (cwd && !diffs.has(f.path)) {
+        paintList()
+        diffs.set(f.path, await croo.gitDiff(cwd, f.path, f.index === '?'))
+      }
+    }
+    paintList()
+  }
+
+  const diffView = (f: GitFile): HTMLElement => {
+    const text = diffs.get(f.path)
+    if (text === undefined) return h('div', { class: 'git-diff note' }, 'Loading…')
+    const { rows, binary } = parseDiff(text)
+    if (binary) return h('div', { class: 'git-diff note' }, 'Binary file.')
+    if (!rows.length) return h('div', { class: 'git-diff note' }, f.work === 'D' || f.index === 'D' ? 'File deleted.' : 'No textual changes.')
+    return h(
+      'div',
+      { class: 'git-diff' },
+      rows.map((r) =>
+        r.type === 'hunk'
+          ? h('div', { class: 'dl gap' }, '⋯ ', r.text)
+          : h('div', { class: `dl ${r.type === 'add' ? 'add' : r.type === 'del' ? 'del' : ''}` }, h('span', { class: 'no' }, String(r.no ?? '')), h('span', { class: 'sign' }, r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''), h('span', { class: 'tx' }, r.text || ' ')),
+      ),
+    )
+  }
+
+  const fileRow = (f: GitFile): HTMLElement => {
+    const { letter, word } = statusLabel(f.index, f.work)
+    const slash = f.path.lastIndexOf('/')
+    const isOpen = open.has(f.path)
+    const check = h('input', { class: 'check', type: 'checkbox', 'aria-label': `Include ${f.path}`, onClick: (e: Event) => e.stopPropagation() })
+    check.checked = picked.has(f.path)
+    check.addEventListener('change', () => ((check.checked ? picked.add(f.path) : picked.delete(f.path)), paintList(), paintFoot()))
+    return h(
+      'div',
+      { class: `git-file ${isOpen ? 'open' : ''}` },
+      h(
+        'div',
+        { class: 'git-row', role: 'button', tabindex: 0, onClick: () => void toggleOpen(f), onKeydown: (e: KeyboardEvent) => e.key === 'Enter' && e.target === e.currentTarget && void toggleOpen(f) },
+        check,
+        h('span', { class: `git-badge s-${letter}`, 'data-tip': word }, letter),
+        h('span', { class: 'git-name', 'data-tip': f.orig ? `${f.orig} → ${f.path}` : f.path }, slash >= 0 ? h('small', null, f.path.slice(0, slash + 1)) : null, f.path.slice(slash + 1)),
+        f.add !== undefined || f.del !== undefined ? h('span', { class: 'git-counts' }, h('b', { class: 'add' }, `+${f.add ?? 0}`), h('b', { class: 'del' }, `−${f.del ?? 0}`)) : null,
+        icon('chevron', 11),
+      ),
+      isOpen ? diffView(f) : null,
+    )
+  }
+
+  const paintTop = () => {
+    if (!top) return
+    if (!status?.repo) return top.replaceChildren()
+    top.replaceChildren(
+      h('span', { class: 'branch', 'data-tip': status.upstream ? `Tracking ${status.upstream}` : 'No upstream yet' }, icon('branch', 13), status.branch || 'HEAD'),
+      status.ahead || status.behind
+        ? h('span', { class: 'sync' }, status.ahead ? h('b', { 'data-tip': `${status.ahead} to push` }, `↑${status.ahead}`) : null, status.behind ? h('b', { 'data-tip': `${status.behind} to pull` }, `↓${status.behind}`) : null)
+        : status.upstream
+          ? h('span', { class: 'sync' }, 'up to date')
+          : h('span', { class: 'sync' }, 'not published'),
+    )
+  }
+
+  const paintList = () => {
+    if (!list) return
+    if (!status) return list.replaceChildren(h('div', { class: 'side-empty' }, 'Loading…'))
+    if (!status.repo) {
+      return list.replaceChildren(
+        h(
+          'div',
+          { class: 'git-empty' },
+          new Frog(84).el,
+          h('p', null, 'This folder is not a git repository.'),
+          h('button', { class: 'btn', type: 'button', onClick: async () => cwd && (await croo.gitInit(cwd), await load()) }, icon('branch', 14), 'Initialize repository'),
+        ),
+      )
+    }
+    if (!files().length) return list.replaceChildren(h('div', { class: 'git-empty' }, new Frog(84, 'happy').el, h('p', null, 'Nothing to commit. Working tree clean.')))
+    const all = h('input', { class: 'check', type: 'checkbox', 'aria-label': 'Select all changes' })
+    all.checked = chosen().length === files().length
+    all.indeterminate = chosen().length > 0 && chosen().length < files().length
+    all.addEventListener('change', () => {
+      picked.clear()
+      if (all.checked) for (const f of files()) picked.add(f.path)
+      paintList()
+      paintFoot()
+    })
+    list.replaceChildren(h('div', { class: 'git-all' }, all, h('span', null, `${files().length} changed file${files().length === 1 ? '' : 's'}`)), ...files().map(fileRow))
+  }
+
+  const paintFoot = () => {
+    if (!foot) return
+    const n = chosen().length
+    const repo = !!status?.repo
+    foot.hidden = !repo
+    commitBtn.disabled = !!busy || !message.trim() || n === 0
+    commitBtn.replaceChildren(busy === 'commit' ? h('span', { class: 'spinner' }) : icon('check', 14), `Commit${n ? ` (${n})` : ''}`)
+    const ahead = status?.ahead ?? 0
+    pushBtn.disabled = !!busy || !!(status?.upstream && ahead === 0)
+    pushBtn.replaceChildren(busy === 'push' ? h('span', { class: 'spinner' }) : icon('arrowUp', 14), 'Push', ...(ahead ? [h('small', null, `${ahead}`)] : []))
+    pushBtn.dataset.tip = status?.upstream ? `Push to ${status.upstream}` : 'Publish this branch to origin'
+    pullBtn.disabled = !!busy || !status?.upstream
+    pullBtn.replaceChildren(busy === 'pull' ? h('span', { class: 'spinner' }) : icon('arrowDown', 14))
+    noteEl.hidden = !note
+    noteEl.className = `git-note ${note?.ok ? 'ok' : 'bad'}`
+    noteEl.textContent = note?.text ?? ''
+  }
+
+  const paint = () => {
+    if (!list?.isConnected) return
+    paintTop()
+    paintList()
+    paintFoot()
+  }
+
+  const view = (): HTMLElement => {
+    top = h('div', { class: 'git-top' })
+    list = h('div', { class: 'git-list' })
+    box = h('textarea', {
+      class: 'git-msg',
+      rows: 2,
+      placeholder: 'Commit message',
+      spellcheck: 'true',
+      onInput: () => ((message = box!.value), paintFoot()),
+      onKeydown: (e: KeyboardEvent) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && (e.preventDefault(), void run('commit')),
+    })
+    box.value = message
+    commitBtn = h('button', { class: 'btn primary grow', type: 'button', title: 'Commit the selected files (⌘↵)', onClick: () => void run('commit') })
+    pushBtn = h('button', { class: 'btn grow', type: 'button', onClick: () => void run('push') })
+    pullBtn = h('button', { class: 'btn icon', type: 'button', title: 'Pull (fast-forward only)', onClick: () => void run('pull') })
+    noteEl = h('pre', { class: 'git-note', hidden: true })
+    foot = h('div', { class: 'git-foot' }, box, h('div', { class: 'git-actions' }, commitBtn, pushBtn, pullBtn), noteEl)
+    const el = h(
+      'div',
+      { class: 'side-col' },
+      head('Git', h('button', { class: 'icon-btn small no-drag', type: 'button', title: 'Refresh', onClick: () => void load() }, icon('refresh', 15))),
+      top,
+      list,
+      foot,
+    )
+    paint()
+    void load()
+    return el
+  }
+
+  return {
+    view,
+    apply,
+    reset() {
+      status = null
+      picked.clear()
+      known.clear()
+      open.clear()
+      diffs.clear()
+      message = ''
+      note = null
+      setBadge(0)
     },
   }
 })()
