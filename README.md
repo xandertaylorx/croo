@@ -115,7 +115,7 @@ git tag v0.14.2
 git push origin main v0.14.2
 ```
 
-The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, it opens the download page. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.
+The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, the button says so and you download the update yourself. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.
 
 ## Layout
 
