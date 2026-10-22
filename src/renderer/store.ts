@@ -22,7 +22,7 @@ export interface ChatView {
   draft: string
   /** When the current turn began, and what it has used so far. */
   t0?: number
-  tokens?: { input: number; output: number }
+  tokens?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
   /** Characters streamed since the last usage report, to estimate output while it is still arriving. */
   streamed?: number
   /** Files and images waiting in the message box. */

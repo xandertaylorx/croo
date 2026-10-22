@@ -60,3 +60,33 @@ if (fs.existsSync(path.join(wout, 'whisper-server')) && fs.existsSync(wstamp) &&
     console.log(`Skipping voice input (could not build whisper.cpp: ${e.message}). Install cmake and run npm run engine.`)
   }
 }
+
+// ---- ripgrep: fast search for the grep and list_files tools (they fall back to a slower walk without it) ----
+const RG_VERSION = '14.1.1'
+const rgout = 'vendor/rg'
+const rgstamp = path.join(rgout, '.tag')
+if (fs.existsSync(path.join(rgout, 'rg')) && fs.existsSync(rgstamp) && fs.readFileSync(rgstamp, 'utf8') === RG_VERSION) {
+  console.log(`ripgrep ${RG_VERSION} already in ${rgout}`)
+} else if (process.platform !== 'darwin') {
+  console.log('Skipping ripgrep: only the macOS build is bundled.')
+} else {
+  try {
+    const name = `ripgrep-${RG_VERSION}-aarch64-apple-darwin`
+    const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${name}.tar.gz`
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-rg-'))
+    console.log(`fetching ${url}`)
+    const res = await fetch(url, { redirect: 'follow' })
+    if (!res.ok) throw new Error(`download failed: ${res.status}`)
+    fs.writeFileSync(path.join(tmp, 'rg.tgz'), Buffer.from(await res.arrayBuffer()))
+    execFileSync('tar', ['xzf', path.join(tmp, 'rg.tgz'), '-C', tmp])
+    fs.rmSync(rgout, { recursive: true, force: true })
+    fs.mkdirSync(rgout, { recursive: true })
+    for (const f of ['rg', 'LICENSE-MIT', 'UNLICENSE']) fs.copyFileSync(path.join(tmp, name, f), path.join(rgout, f))
+    fs.chmodSync(path.join(rgout, 'rg'), 0o755)
+    fs.writeFileSync(rgstamp, RG_VERSION)
+    fs.rmSync(tmp, { recursive: true, force: true })
+    console.log(`ripgrep ready in ${rgout}`)
+  } catch (e) {
+    console.log(`Skipping ripgrep (${e.message}). Search will use the built-in walker.`)
+  }
+}

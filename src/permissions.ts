@@ -1,7 +1,7 @@
 import type { PermissionMode } from './types.js'
 
 /** Read-only tools never change anything. */
-export const READ_ONLY_TOOLS = new Set(['read_file', 'list_files', 'grep'])
+export const READ_ONLY_TOOLS = new Set(['read_file', 'list_files', 'grep', 'todo_write'])
 
 const SAFE_BINS = new Set([
   'ls', 'pwd', 'cd', 'cat', 'head', 'tail', 'wc', 'echo', 'printf', 'grep', 'rg', 'find', 'tree', 'which', 'whoami',
@@ -50,14 +50,16 @@ export class Permissions {
 
   /**
    * manual: everything asks, reads included.
-   * auto:   reads, edits inside the folder and safe commands run; other commands ask.
+   * auto:   reads, edits inside the folder and safe commands run; other commands and web fetches ask.
    * bypass: nothing asks.
    */
   needsApproval(tool: string, args?: { command?: unknown }): boolean {
-    if (tool === 'remember' || this.mode === 'bypass') return false
+    if (tool === 'remember' || tool === 'todo_write' || this.mode === 'bypass') return false
     if (this.mode === 'manual') return true
     if (READ_ONLY_TOOLS.has(tool) || this.always.has(tool)) return false
     if (tool === 'bash') return classifyCommand(String(args?.command ?? '')) !== 'safe'
+    // A request leaves the machine, and a URL can carry data out of the project: ask until allowed.
+    if (tool === 'web_fetch') return true
     return false // file tools can only touch the working folder
   }
 

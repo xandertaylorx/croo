@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Long tasks keep going**: when a conversation nears the model's context limit, Croo summarizes the older part and carries on. The chat still shows everything, and a quiet line marks where the summary starts. If a provider says a request is too long, Croo summarizes and retries instead of failing
+- **Prompt caching for Claude**: the system prompt, tools and conversation so far are cached between steps, so long agent runs cost much less and start each step faster. Cached tokens from OpenAI and Gemini are counted too, and the cost estimate prices cache reads and writes
+- **Faster, sharper search**: grep and list_files use ripgrep (bundled with the app), about 4× faster on large projects and with no 20,000-file cap. grep can return only file names or match counts, show context lines, and match across lines
+- **New tools**: multi_edit makes several edits to one file in one step, web_fetch reads a documentation page or URL (asks first in Auto mode), and todo_write keeps a visible task list for multi-step work
+- Independent reads and searches run in parallel, and a turn can take up to 200 steps instead of 50
+- A rewritten coding system prompt: understand before changing, do only what was asked, verify with the project's own tests, care with irreversible actions, and outcome-first replies
+
 ## 0.14.2
 
 - **Update progress**: the update button and Settings show download and install progress while Croo updates

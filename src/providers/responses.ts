@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
+import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall, Usage } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
 import { clampEffort, effortLevels } from '../effort.js'
 import { parseArgs, postJson, sseData } from './sse.js'
@@ -77,7 +77,7 @@ export function responsesProvider(profile: Profile, apiKey?: string): Provider {
       let thinking = ''
       const calls = new Map<string, { index: number; callId: string; name: string; args: string }>()
       const reasoning: any[] = []
-      const usage = { input: 0, output: 0 }
+      const usage: Usage = { input: 0, output: 0 }
       for await (const data of sseData(res)) {
         if (data === '[DONE]') break
         let ev: any
@@ -125,8 +125,13 @@ export function responsesProvider(profile: Profile, apiKey?: string): Provider {
             break
           case 'response.completed':
           case 'response.incomplete':
-            usage.input = ev.response?.usage?.input_tokens ?? usage.input
-            usage.output = ev.response?.usage?.output_tokens ?? usage.output
+          {
+            const u = ev.response?.usage
+            const cached = u?.input_tokens_details?.cached_tokens ?? 0
+            usage.input = (u?.input_tokens ?? usage.input) - cached
+            usage.output = u?.output_tokens ?? usage.output
+            if (cached) usage.cacheRead = cached
+          }
             break
           case 'response.failed':
           case 'error': {

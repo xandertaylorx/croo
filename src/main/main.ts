@@ -11,6 +11,8 @@ import { Permissions } from '../permissions.js'
 import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, type UserContext } from '../prompt.js'
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
 import { rememberTool } from '../tools/index.js'
+import { setRipgrepDir } from '../tools/rg.js'
+import { contextWindow } from '../compact.js'
 import { demoProvider } from '../providers/demo.js'
 import { fixPath } from './shellenv.js'
 import { LOCAL_MODELS, VOICE_MODEL, localModel } from '../localmodels.js'
@@ -291,6 +293,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
         signal: ac.signal,
         effort: cfg.effort,
         tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : undefined,
+        contextWindow: demo || !profile ? undefined : contextWindow(profile.model, !!profile.engine),
         hooks: {
           onThinking: () => emit({ chatId, type: 'thinking' }),
           onReasoning: (delta) => emit({ chatId, type: 'reasoning', delta }),
@@ -305,7 +308,8 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
               notifyAway(chatId, session, `Needs your OK: ${preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary}`)
               emit({ chatId, type: 'confirm', id, name, summary: preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary, preview: toPreviewDto(preview) })
             }),
-          onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output }),
+          onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
+          onCompacted: () => emit({ chatId, type: 'compacted' }),
         },
       })
       emit({ chatId, type: 'done', seconds: (Date.now() - t0) / 1000 })
@@ -866,6 +870,7 @@ else {
     fixPath()
     loadAll()
     initVoice(app.isPackaged ? path.join(process.resourcesPath, 'whisper') : path.join(here, '..', '..', 'vendor', 'whisper'))
+    setRipgrepDir(app.isPackaged ? path.join(process.resourcesPath, 'rg') : path.join(here, '..', '..', 'vendor', 'rg'))
     initLocal(app.isPackaged ? path.join(process.resourcesPath, 'llama') : path.join(here, '..', '..', 'vendor', 'llama'), pushState)
     registerIpc()
     buildMenu()

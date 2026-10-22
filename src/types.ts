@@ -6,11 +6,18 @@ export interface ToolCall {
   meta?: unknown
 }
 
-export type Msg =
+export type Msg = (
   /** `display` is what the chat shows when it differs from what the model got (e.g. "/init"). */
   | { role: 'user'; content: string; display?: string; images?: ImageAtt[]; attached?: AttachedFile[] }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; thinking?: string; /** Provider data that must round-trip, e.g. Anthropic's signed thinking blocks. */ meta?: unknown }
   | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean }
+) & {
+  /**
+   * Set when the conversation was compacted: a summary of every message before this one. The model is sent
+   * the summary and the messages from here on; the chat still shows everything.
+   */
+  summaryBefore?: string
+}
 
 /** An image sent with a message, as base64 (no data: prefix). */
 export interface ImageAtt {
@@ -33,8 +40,13 @@ export interface ToolSpec {
 }
 
 export interface Usage {
+  /** Uncached input tokens. */
   input: number
   output: number
+  /** Input tokens read from the provider's prompt cache (billed at a fraction of the input price). */
+  cacheRead?: number
+  /** Input tokens written to the prompt cache (Anthropic bills these at a premium). */
+  cacheWrite?: number
 }
 
 export interface ChatRequest {

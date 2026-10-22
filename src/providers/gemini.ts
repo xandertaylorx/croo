@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
+import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall, Usage } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
 import { GEMINI_BUDGET, clampEffort, effortLevels } from '../effort.js'
 import { postJson, sseData } from './sse.js'
@@ -65,7 +65,7 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
       let text = ''
       let thinking = ''
       const toolCalls: ToolCall[] = []
-      const usage = { input: 0, output: 0 }
+      const usage: Usage = { input: 0, output: 0 }
       for await (const data of sseData(res)) {
         let chunk: any
         try {
@@ -74,8 +74,10 @@ export function geminiProvider(profile: Profile, apiKey?: string): Provider {
           continue
         }
         if (chunk.usageMetadata) {
-          usage.input = chunk.usageMetadata.promptTokenCount ?? usage.input
+          const cached = chunk.usageMetadata.cachedContentTokenCount ?? 0
+          usage.input = (chunk.usageMetadata.promptTokenCount ?? usage.input) - cached
           usage.output = chunk.usageMetadata.candidatesTokenCount ?? usage.output
+          if (cached) usage.cacheRead = cached
         }
         for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
           if (part.thought) {

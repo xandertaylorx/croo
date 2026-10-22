@@ -5,6 +5,7 @@ import type { AttachmentView } from './shared/ipc.js'
 import type { Msg } from './types.js'
 
 const MAX_RESULT = 4000
+export const COMPACTED_NOTE = 'Earlier messages were summarized to free up context'
 const MAX_DIFF_LINES = 400
 
 export const clip = (s: string) => (s.length > MAX_RESULT ? s.slice(0, MAX_RESULT) + '\n… (clipped)' : s)
@@ -42,6 +43,7 @@ export function toItems(messages: Msg[]): Item[] {
 
   const items: Item[] = []
   for (const m of messages) {
+    if (m.summaryBefore) items.push({ kind: 'note', text: COMPACTED_NOTE })
     if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m) })
     else if (m.role === 'assistant') {
       if (m.thinking?.trim()) items.push({ kind: 'thinking', text: m.thinking, done: true })

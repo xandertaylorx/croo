@@ -432,6 +432,19 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
+.msg.note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.msg.note::before,
+.msg.note::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
 .msg.error {
   padding: 10px 14px;
   border-radius: 10px;

@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
+import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall, Usage } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
 import { claudeMaxTokens, claudeThinking, clampEffort, effortLevels, thinkingBudget } from '../effort.js'
 import { parseArgs, postJson, sseData } from './sse.js'
@@ -27,6 +27,34 @@ export function toAnthropicMessages(messages: Msg[]) {
     }
   }
   return out
+}
+
+const EPHEMERAL = { type: 'ephemeral' }
+
+/**
+ * Prompt caching: mark the end of the tools, the system prompt and the newest message so each step of a turn
+ * reads everything before it from the cache instead of paying for it again. That is three of the four
+ * breakpoints the API allows. Caching is a prefix match, so the rolling breakpoint on the last message also
+ * covers the previous step's prefix.
+ */
+export function withCacheBreakpoints(body: { system: any; tools?: any[]; messages: any[] }) {
+  if (typeof body.system === 'string' && body.system) body.system = [{ type: 'text', text: body.system, cache_control: EPHEMERAL }]
+  if (body.tools?.length) body.tools[body.tools.length - 1] = { ...body.tools[body.tools.length - 1], cache_control: EPHEMERAL }
+  const last = body.messages[body.messages.length - 1]
+  if (last) {
+    if (typeof last.content === 'string') last.content = [{ type: 'text', text: last.content, cache_control: EPHEMERAL }]
+    else {
+      // Thinking blocks cannot carry cache_control; put it on the last block that can.
+      for (let i = last.content.length - 1; i >= 0; i--) {
+        const b = last.content[i]
+        if (b.type !== 'thinking' && b.type !== 'redacted_thinking' && !(b.type === 'text' && !b.text)) {
+          last.content[i] = { ...b, cache_control: EPHEMERAL }
+          break
+        }
+      }
+    }
+  }
+  return body
 }
 
 /**
@@ -71,6 +99,7 @@ export function anthropicProvider(profile: Profile, apiKey?: string): Provider {
         stream: true,
       }
       if (req.tools.length) body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
+      if (!has(model, 'cache')) withCacheBreakpoints(body)
       const apply = () => {
         delete body.thinking
         delete body.output_config
@@ -87,6 +116,14 @@ export function anthropicProvider(profile: Profile, apiKey?: string): Provider {
         } catch (e: any) {
           const msg: string = e?.message ?? ''
           if (!/API error 400/.test(msg)) throw e
+          // Some Anthropic-compatible servers reject cache_control; send the plain form from now on.
+          if (/cache_control/i.test(msg) && !has(model, 'cache')) {
+            note(model, 'cache')
+            body.system = req.system
+            body.messages = toAnthropicMessages(req.messages)
+            if (body.tools) body.tools = body.tools.map(({ cache_control: _c, ...t }: any) => t)
+            continue
+          }
           // Work out which setting the model objected to, remember it, and try again without it.
           if (body.thinking && /thinking|budget_tokens|adaptive/i.test(msg)) {
             if (/display/i.test(msg) && body.thinking.display) note(model, 'display')
@@ -103,7 +140,7 @@ export function anthropicProvider(profile: Profile, apiKey?: string): Provider {
       let thinking = ''
       const thought = new Map<number, any>()
       const blocks = new Map<number, { id: string; name: string; json: string }>()
-      const usage = { input: 0, output: 0 }
+      const usage: Usage = { input: 0, output: 0 }
       for await (const data of sseData(res)) {
         let ev: any
         try {
@@ -111,8 +148,12 @@ export function anthropicProvider(profile: Profile, apiKey?: string): Provider {
         } catch {
           continue
         }
-        if (ev.type === 'message_start') usage.input = ev.message?.usage?.input_tokens ?? 0
-        else if (ev.type === 'message_delta') usage.output = ev.usage?.output_tokens ?? usage.output
+        if (ev.type === 'message_start') {
+          const u = ev.message?.usage
+          usage.input = u?.input_tokens ?? 0
+          if (u?.cache_read_input_tokens) usage.cacheRead = u.cache_read_input_tokens
+          if (u?.cache_creation_input_tokens) usage.cacheWrite = u.cache_creation_input_tokens
+        } else if (ev.type === 'message_delta') usage.output = ev.usage?.output_tokens ?? usage.output
         else if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
           blocks.set(ev.index, { id: ev.content_block.id, name: ev.content_block.name, json: '' })
         } else if (ev.type === 'content_block_start' && ev.content_block?.type === 'thinking') {

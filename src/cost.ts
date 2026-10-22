@@ -1,5 +1,7 @@
 /** Pure cost helpers, shared by the app and the renderer. US dollars per million tokens. */
-export const costOf = (tokens: { input: number; output: number }, price: { input: number; output: number }) => (tokens.input * price.input + tokens.output * price.output) / 1e6
+/** Cache reads cost a tenth of the input price and cache writes a quarter more (Anthropic's rates; close enough elsewhere). */
+export const costOf = (tokens: { input: number; output: number; cacheRead?: number; cacheWrite?: number }, price: { input: number; output: number }) =>
+  ((tokens.input + (tokens.cacheRead ?? 0) * 0.1 + (tokens.cacheWrite ?? 0) * 1.25) * price.input + tokens.output * price.output) / 1e6
 
 export function formatCost(usd: number): string {
   if (usd <= 0) return '$0'

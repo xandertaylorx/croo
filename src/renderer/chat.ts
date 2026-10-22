@@ -21,6 +21,9 @@ const VERBS: Record<string, [string, string, IconName]> = {
   list_files: ['Listing', 'Listed', 'list'],
   grep: ['Searching', 'Searched', 'search'],
   bash: ['Running', 'Ran', 'terminal'],
+  multi_edit: ['Editing', 'Edited', 'pencil'],
+  web_fetch: ['Fetching', 'Fetched', 'globe'],
+  todo_write: ['Planning', 'Plan', 'check'],
   remember: ['Remembering', 'Remembered', 'sparkle'],
 }
 const TITLES: Record<string, string> = {
@@ -30,6 +33,8 @@ const TITLES: Record<string, string> = {
   read_file: 'Read this file?',
   list_files: 'List these files?',
   grep: 'Search the project?',
+  multi_edit: 'Make these edits?',
+  web_fetch: 'Fetch this page?',
 }
 const verb = (name: string, running: boolean): string => VERBS[name]?.[running ? 0 : 1] ?? name
 
@@ -67,14 +72,18 @@ function metaText(v: ChatView): string {
   const parts: string[] = []
   if (live && v.t0) parts.push(elapsed(performance.now() - v.t0))
   const out = (v.tokens?.output ?? 0) + (live ? (v.streamed ?? 0) / 4 : 0)
-  const total = (v.tokens?.input ?? 0) + out
+  const total = inputTokens(v) + out
   if (total >= 1) parts.push(`${live ? '~' : ''}${fmtTokens(total)} tokens`)
   const price = store.state.demo ? undefined : store.state.profiles.find((p) => p.active)?.price
-  if (price && price.source !== 'local' && total >= 1) parts.push(`~${formatCost(costOf({ input: v.tokens?.input ?? 0, output: out }, price))}`)
+  if (price && price.source !== 'local' && total >= 1) parts.push(`~${formatCost(costOf({ ...(v.tokens ?? { input: 0 }), output: out }, price))}`)
   return parts.join(' · ')
 }
 
-const metaTip = (v: ChatView) => `Input ${(v.tokens?.input ?? 0).toLocaleString()} · Output ${Math.round((v.tokens?.output ?? 0) + (v.streamed ?? 0) / 4).toLocaleString()} tokens. Cost is an estimate from list prices.`
+/** Every input token, whether the provider's cache served it or not. */
+const inputTokens = (v: ChatView) => (v.tokens?.input ?? 0) + (v.tokens?.cacheRead ?? 0) + (v.tokens?.cacheWrite ?? 0)
+
+const metaTip = (v: ChatView) =>
+  `Input ${inputTokens(v).toLocaleString()}${v.tokens?.cacheRead ? ` (${v.tokens.cacheRead.toLocaleString()} from cache)` : ''} · Output ${Math.round((v.tokens?.output ?? 0) + (v.streamed ?? 0) / 4).toLocaleString()} tokens. Cost is an estimate from list prices.`
 
 // Keep the clock moving while a turn runs, without redrawing the whole status row.
 setInterval(() => {
@@ -99,6 +108,8 @@ function renderItem(item: Item): HTMLElement {
       return renderThinking(item)
     case 'error':
       return h('div', { class: 'msg error' }, item.text)
+    case 'note':
+      return h('div', { class: 'msg note' }, item.text)
     case 'tool':
       return renderTool(item)
     case 'confirm':
@@ -295,7 +306,7 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
       'div',
       { class: 'confirm-actions' },
       h('button', { class: 'btn primary', type: 'button', onClick: () => answer('y') }, 'Allow'),
-      manual ? null : h('button', { class: 'btn', type: 'button', onClick: () => answer('a') }, `Always allow ${item.name === 'bash' ? 'commands' : item.name === 'edit_file' || item.name === 'write_file' ? 'edits' : 'this'}`),
+      manual ? null : h('button', { class: 'btn', type: 'button', onClick: () => answer('a') }, `Always allow ${item.name === 'bash' ? 'commands' : item.name === 'edit_file' || item.name === 'write_file' || item.name === 'multi_edit' ? 'edits' : item.name === 'web_fetch' ? 'fetches' : 'this'}`),
       h('button', { class: 'btn ghost', type: 'button', onClick: () => answer('n') }, 'Deny'),
       h('span', { class: 'confirm-keys' }, '⌘↵ allow · esc deny'),
     ),
@@ -588,7 +599,12 @@ export function handleEvent(ev: ChatEvent) {
       setStatus(v, 'thinking')
       break
     case 'usage':
-      v.tokens = { input: (v.tokens?.input ?? 0) + ev.input, output: (v.tokens?.output ?? 0) + ev.output }
+      v.tokens = {
+        input: (v.tokens?.input ?? 0) + ev.input,
+        output: (v.tokens?.output ?? 0) + ev.output,
+        cacheRead: (v.tokens?.cacheRead ?? 0) + (ev.cacheRead ?? 0),
+        cacheWrite: (v.tokens?.cacheWrite ?? 0) + (ev.cacheWrite ?? 0),
+      }
       v.streamed = 0
       break
     case 'reasoning':
@@ -633,6 +649,9 @@ export function handleEvent(ev: ChatEvent) {
       setStatus(v, 'thinking')
       break
     }
+    case 'compacted':
+      push(v, { kind: 'note', text: 'Earlier messages were summarized to free up context' })
+      break
     case 'confirm':
       endThinking(v)
       push(v, { kind: 'confirm', id: ev.id, name: ev.name, summary: ev.summary, preview: ev.preview })

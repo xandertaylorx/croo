@@ -29,10 +29,13 @@ export type Item =
   | { kind: 'tool'; name: string; summary: string; status: ToolStatus; result?: string }
   | { kind: 'confirm'; id: string; name: string; summary: string; preview: PreviewDto }
   | { kind: 'error'; text: string }
+  /** A quiet line in the thread, e.g. "Summarized earlier messages to free up context". */
+  | { kind: 'note'; text: string }
 
 export type ChatEvent = { chatId: string } & (
   | { type: 'thinking' }
-  | { type: 'usage'; input: number; output: number }
+  | { type: 'usage'; input: number; output: number; cacheRead?: number; cacheWrite?: number }
+  | { type: 'compacted' }
   | { type: 'reasoning'; delta: string }
   | { type: 'text'; delta: string }
   | { type: 'textEnd' }

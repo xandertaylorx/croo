@@ -72,6 +72,10 @@
       {
         "from": "vendor/whisper",
         "to": "whisper"
+      },
+      {
+        "from": "vendor/rg",
+        "to": "rg"
       }
     ],
     "mac": {

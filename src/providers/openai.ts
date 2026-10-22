@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall } from '../types.js'
+import type { ChatRequest, ChatResult, Msg, Profile, Provider, ToolCall, Usage } from '../types.js'
 import { DEFAULT_BASE_URLS } from '../config.js'
 import { clampEffort, effortLevels } from '../effort.js'
 import { parseArgs, postJson, sseData } from './sse.js'
@@ -65,7 +65,7 @@ export function openaiProvider(profile: Profile, apiKey?: string): Provider {
       let text = ''
       let thinking = ''
       const calls = new Map<number, { id: string; name: string; args: string }>()
-      const usage = { input: 0, output: 0 }
+      const usage: Usage = { input: 0, output: 0 }
       for await (const data of sseData(res)) {
         if (data === '[DONE]') break
         let chunk: any
@@ -75,8 +75,11 @@ export function openaiProvider(profile: Profile, apiKey?: string): Provider {
           continue
         }
         if (chunk.usage) {
-          usage.input = chunk.usage.prompt_tokens ?? usage.input
+          // prompt_tokens includes what the server's prompt cache served.
+          const cached = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0
+          usage.input = (chunk.usage.prompt_tokens ?? usage.input) - cached
           usage.output = chunk.usage.completion_tokens ?? usage.output
+          if (cached) usage.cacheRead = cached
         }
         const delta = chunk.choices?.[0]?.delta
         if (!delta) continue

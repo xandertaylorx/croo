@@ -1,6 +1,7 @@
 import type { Msg, Provider, ToolCall, Usage } from './types.js'
 import { TOOLS, toolByName, truncate, type Preview, type Tool } from './tools/index.js'
-import type { Permissions } from './permissions.js'
+import { READ_ONLY_TOOLS, type Permissions } from './permissions.js'
+import { COMPACT_AT, compact, isContextOverflow, modelView, promptTokens } from './compact.js'
 
 export interface AgentHooks {
   onThinking(): void
@@ -11,6 +12,8 @@ export interface AgentHooks {
   onToolDone(name: string, summary: string, ok: boolean, result: string): void
   confirm(name: string, preview: Preview): Promise<'y' | 'n' | 'a'>
   onUsage(u: Usage): void
+  /** The older part of the conversation was just summarized to free up context. */
+  onCompacted?(): void
 }
 
 export interface TurnOptions {
@@ -25,6 +28,8 @@ export interface TurnOptions {
   /** Defaults to every tool. Pass [] for a plain conversation. */
   tools?: Tool[]
   maxSteps?: number
+  /** The model's context window in tokens. When set, the conversation is compacted before it overflows. */
+  contextWindow?: number
 }
 
 export class Cancelled extends Error {
@@ -60,38 +65,76 @@ export function extractTextToolCalls(text: string, names: string[]): { calls: To
 /** Run the model/tool loop until the model stops calling tools. Mutates `messages`. */
 export async function runTurn(o: TurnOptions): Promise<void> {
   const { hooks, signal } = o
-  for (let step = 0; step < (o.maxSteps ?? 50); step++) {
+  const tools = o.tools ?? TOOLS
+  const maxSteps = o.maxSteps ?? 200
+  let lastPrompt = 0
+  const shrink = async (hard: boolean) => {
+    if (!o.contextWindow) return false
+    hooks.onThinking()
+    const done = await compact({ provider: o.provider, messages: o.messages, window: o.contextWindow, signal, hard })
+    if (!done) return false
+    hooks.onUsage(done.usage)
+    hooks.onCompacted?.()
+    return true
+  }
+  for (let step = 0; step < maxSteps; step++) {
+    if (o.contextWindow && lastPrompt > o.contextWindow * COMPACT_AT) await guard(signal, () => shrink(false))
     hooks.onThinking()
     let res
-    try {
-      res = await o.provider.chat(
-        { system: o.system, messages: o.messages, tools: (o.tools ?? TOOLS).map((t) => t.spec), signal, effort: o.effort },
-        hooks.onText,
-        hooks.onReasoning,
-      )
-    } catch (e) {
-      hooks.onTextEnd()
-      if (signal.aborted) throw new Cancelled()
-      throw e
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await o.provider.chat(
+          { system: o.system, messages: modelView(o.messages), tools: tools.map((t) => t.spec), signal, effort: o.effort },
+          hooks.onText,
+          hooks.onReasoning,
+        )
+        break
+      } catch (e) {
+        hooks.onTextEnd()
+        if (signal.aborted) throw new Cancelled()
+        // The request did not fit: summarize harder and try again.
+        if (attempt < 2 && isContextOverflow(e) && (await guard(signal, () => shrink(attempt > 0)))) continue
+        throw e
+      }
     }
     hooks.onTextEnd()
     hooks.onUsage(res.usage)
+    lastPrompt = promptTokens(res.usage) + res.usage.output
     if (!res.toolCalls.length) {
-      const found = extractTextToolCalls(res.text, (o.tools ?? TOOLS).map((t) => t.spec.name))
+      const found = extractTextToolCalls(res.text, tools.map((t) => t.spec.name))
       if (found.calls.length) res = { ...res, text: found.rest, toolCalls: found.calls }
     }
     o.messages.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined, thinking: res.thinking || undefined, meta: res.meta })
     if (!res.toolCalls.length) return
 
-    for (let i = 0; i < res.toolCalls.length; i++) {
+    const calls = res.toolCalls
+    for (let i = 0; i < calls.length; ) {
       if (signal.aborted) {
-        for (const c of res.toolCalls.slice(i)) o.messages.push(toolMsg(c, 'Cancelled by user.', true))
+        for (const c of calls.slice(i)) o.messages.push(toolMsg(c, 'Cancelled by user.', true))
         throw new Cancelled()
       }
-      o.messages.push(await execute(res.toolCalls[i], o))
+      // Read-only calls that need no approval run together; results still go back in the order they were asked.
+      let j = i
+      while (j < calls.length && runsFreely(calls[j], o)) j++
+      if (j - i > 1) {
+        o.messages.push(...(await Promise.all(calls.slice(i, j).map((c) => execute(c, o)))))
+        i = j
+      } else o.messages.push(await execute(calls[i++], o))
     }
   }
-  throw new Error(`Stopped after ${o.maxSteps ?? 50} steps.`)
+  throw new Error(`Stopped after ${maxSteps} steps.`)
+}
+
+const runsFreely = (c: ToolCall, o: TurnOptions) => READ_ONLY_TOOLS.has(c.name) && !o.permissions.needsApproval(c.name, c.args)
+
+/** Run `fn`, turning an abort during it into Cancelled. */
+async function guard<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (e) {
+    if (signal.aborted) throw new Cancelled()
+    throw e
+  }
 }
 
 function toolMsg(c: ToolCall, content: string, isError: boolean): Msg {
