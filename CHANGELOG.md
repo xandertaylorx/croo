@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- **Website** in `web/`, published to GitHub Pages: live latest-release download button, install commands, screenshots and features
+- The model is now told which model it is, so small local models stop claiming to be GPT-4
+- Sent attachments are cards above your message (image thumbnails you can open, file cards with type and size); `@file` mentions show as chips
+- Replies read better: formatting guidance for the model, task lists and auto-linked URLs, cleaner headings, tables and quotes, and a copy button on every reply
+
 ## 0.7.0
 
 - **Attachments**: paste or drop images and files into the message box, or use the paperclip; images are scaled down before sending and work with Claude, OpenAI-compatible and Gemini models

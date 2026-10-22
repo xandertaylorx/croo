@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Croo: a coding agent with a frog in it</title>
+<meta name="description" content="Croo is a minimal desktop app for working with AI on your code. Bring your own API key or a local model. No account, no telemetry, no backend." />
+<meta name="theme-color" content="#0f1311" />
+<link rel="icon" href="assets/icon.png" />
+<meta property="og:title" content="Croo: a coding agent with a frog in it" />
+<meta property="og:description" content="A minimal desktop coding agent. Bring your own key or a local model. No account, no telemetry." />
+<meta property="og:image" content="https://xandertaylorx.github.io/croo/assets/git.png" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+
+<header class="nav">
+  <a class="brand" href="#top" aria-label="Croo home"><img src="assets/icon.png" width="28" height="28" alt="" />Croo</a>
+  <nav aria-label="Main">
+    <a href="#features">Features</a>
+    <a href="#models">Models</a>
+    <a href="#download">Download</a>
+    <a class="gh" href="https://github.com/xandertaylorx/croo" rel="noopener">GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="frog-wrap"><svg class="frog" viewBox="0 0 15 8" shape-rendering="crispEdges" aria-hidden="true">
+  <g class="hop"><path class="body" d="M1 0h5v1h-5zM9 0h5v1h-5zM1 1h5v1h-5zM9 1h5v1h-5zM0 2h15v1h-15zM0 3h15v1h-15zM0 4h15v1h-15zM0 5h15v1h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/>
+    <g class="face"><rect class="eye" x="3" y="1" width="1" height="2"/><rect class="eye" x="11" y="1" width="1" height="2"/>
+    <rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></g>
+</svg></div>
+    <p class="eyebrow">Open source · macOS today, Windows next</p>
+    <h1>A coding agent<br />with a frog in it.</h1>
+    <p class="lede">Croo is a small, quiet desktop app for working with AI on your code. Each folder gets its own chats. You decide what it may do on its own, and you see everything it does.</p>
+
+    <div class="cta">
+      <a class="btn primary" id="dl-main" href="https://github.com/xandertaylorx/croo/releases/latest">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+        <span>Download for macOS</span><small id="dl-version"></small>
+      </a>
+      <a class="btn ghost" href="https://github.com/xandertaylorx/croo" rel="noopener">View on GitHub</a>
+    </div>
+
+    <div class="cmd" role="group" aria-label="Run from source">
+      <span class="prompt" aria-hidden="true">$</span>
+      <code id="cmd-text">git clone https://github.com/xandertaylorx/croo &amp;&amp; cd croo &amp;&amp; npm i &amp;&amp; npm run dev</code>
+      <button class="copy" type="button" data-copy="#cmd-text" aria-label="Copy command">Copy</button>
+    </div>
+    <p class="fine">Bring your own API key, or a local model. No account. No telemetry. No backend.</p>
+  </section>
+
+  <section class="shot" aria-label="Screenshots">
+    <div class="tabs" role="tablist" aria-label="Screenshots">
+      <button role="tab" aria-selected="true" data-shot="git">Chat + Git</button>
+      <button role="tab" aria-selected="false" data-shot="chat">Run code</button>
+      <button role="tab" aria-selected="false" data-shot="settings">Settings</button>
+    </div>
+    <figure class="window">
+      <div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div>
+      <img id="shot-img" src="assets/git.png" alt="Croo showing a chat on the left and the Git panel with an inline diff on the right" width="1920" height="1200" />
+    </figure>
+  </section>
+
+  <section id="features" class="section">
+    <p class="label">What it does</p>
+    <h2>Everything in one calm window.</h2>
+    <div class="grid">
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>You set the leash</h3><p><b>Manual</b> asks before everything. <b>Auto</b> runs reads, edits and safe commands, and asks about the rest. <b>Bypass</b> never asks.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2.2"/><circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="8.5" r="2.2"/><path d="M6 7.7v8.6M18 10.7c0 4.3-6 3.3-11 6.3"/></svg></div><h3>Git, built in</h3><p>See every change with inline diffs, pick what to commit, then push. No remote yet? Publish creates one on GitHub for you.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg></div><h3>Run it from the chat</h3><p>Shell, Python and Node snippets get a Run button. Output streams right under the code with the exit code and timing.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></svg></div><h3>See it think</h3><p>Reasoning streams into a row you can open. A live clock, token count and cost estimate run while it works.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="m21 11-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg></div><h3>Attach and mention</h3><p>Paste screenshots, drop files, or type <code>@</code> to pull in a file from your project. <code>/init</code> writes an <code>AGENTS.md</code> for you.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 17h7"/></svg></div><h3>Terminal, files, browser</h3><p>A real shell, a file tree with a viewer, and a small browser for previewing what you build, all beside your chat.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></div><h3>Find anything</h3><p><kbd>⌘</kbd><kbd>K</kbd> searches chats by what was said, files by name, and actions. Edit any message and resend, or retry a reply.</p></article>
+      <article class="card"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg></div><h3>Chat or Code</h3><p>Code mode gives each folder its own chats and tools. Chat mode is a plain conversation with nothing to set up.</p></article>
+    </div>
+  </section>
+
+  <section id="models" class="section narrow">
+    <p class="label">Bring your own model</p>
+    <h2>Your key. Your model. Your machine.</h2>
+    <p class="sub">Works with any provider, and with models running locally. Your keys are encrypted in your Mac's keychain and only ever sent to the provider you choose.</p>
+    <ul class="chips" aria-label="Supported providers">
+      <li>Claude</li><li>OpenAI</li><li>Gemini</li><li>Ollama</li><li>OpenRouter</li><li>Groq</li><li>DeepSeek</li><li>Mistral</li><li>xAI</li><li>Together</li><li>LM Studio</li><li>llama.cpp</li><li>vLLM</li><li>Any OpenAI-compatible URL</li>
+    </ul>
+    <div class="trio">
+      <div><b>No account</b><span>Nothing to sign up for.</span></div>
+      <div><b>No telemetry</b><span>It never phones home.</span></div>
+      <div><b>No backend</b><span>Chats and keys stay on your Mac.</span></div>
+    </div>
+  </section>
+
+  <section id="download" class="section narrow">
+    <p class="label">Get Croo</p>
+    <h2>Download</h2>
+    <div class="release" id="release">
+      <div class="release-top">
+        <div><span class="ver" id="rel-version">Latest release</span><span class="date" id="rel-date"></span></div>
+        <a class="notes" id="rel-notes" href="https://github.com/xandertaylorx/croo/releases">Release notes</a>
+      </div>
+      <div class="dl-row">
+        <a class="btn primary" id="dl-arm" href="https://github.com/xandertaylorx/croo/releases/latest"><span>Download for Apple Silicon</span><small id="dl-arm-size"></small></a>
+        <a class="btn ghost" id="dl-intel" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>Intel Mac</span></a>
+        <a class="btn ghost" id="dl-zip" href="https://github.com/xandertaylorx/croo/releases/latest" hidden><span>.zip</span></a>
+      </div>
+      <p class="fine left">Open the <code>.dmg</code>, drag Croo to Applications. Croo is not notarized yet, so macOS may block the first launch: open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b>. <span id="platform-note"></span></p>
+    </div>
+    <p class="or">or build it from source</p>
+    <div class="cmd" role="group" aria-label="Build from source">
+      <span class="prompt" aria-hidden="true">$</span>
+      <code id="cmd2">git clone https://github.com/xandertaylorx/croo &amp;&amp; cd croo &amp;&amp; npm i &amp;&amp; npm run dist</code>
+      <button class="copy" type="button" data-copy="#cmd2" aria-label="Copy command">Copy</button>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <a class="brand" href="#top"><img src="assets/icon.png" width="22" height="22" alt="" />Croo</a>
+    <nav aria-label="Footer">
+      <a href="https://github.com/xandertaylorx/croo">GitHub</a>
+      <a href="https://github.com/xandertaylorx/croo/releases">Releases</a>
+      <a href="https://github.com/xandertaylorx/croo/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/xandertaylorx/croo/issues">Issues</a>
+    </nav>
+    <p>MIT licensed. Made with a frog.</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
