@@ -41,6 +41,7 @@ const api: CrooApi = {
   deleteLocal: (id) => invoke('local:delete', id),
   setUser: (userName, avatar) => invoke('user:set', userName, avatar),
   setNotify: (on) => invoke('notify:set', on),
+  setThemeMode: (mode) => invoke('theme:mode', mode),
   setPrice: (profile, input, output) => invoke('profile:price', profile, input, output),
   installUpdate: () => invoke('update:install'),
   checkUpdate: () => invoke('update:check'),

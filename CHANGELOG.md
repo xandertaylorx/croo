@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.0
+
+- **Colour palettes**: pick Croo (the neutral greys and frog green) or Crooli, a palette taken from crooli.com: warm ivory and oat, ink, a lapis-blue accent, with sage, sky and clay for charts and code. Each has a light and a dark side
+- **Light, dark or system**: a Mode switch in Settings → General → Appearance overrides your Mac's setting for the whole window
+- **Settings redone**: the window is centred and calmer, with a fixed close button, a quieter side list with the version at the foot, grouped rows for switches, a proper font picker, and a narrower column that is easier to read
+- **Built by Crooli**: the foot of Settings → About credits Crooli, in Plus Jakarta Sans ExtraBold, and links to crooli.com. The font is bundled, so it works offline
+
 ## 0.20.0
 
 - **Font setting**: Settings → General → Appearance now has a Font choice: Default, Rounded, Humanist, Serif or Mono, each shown in its own typeface. It applies at once and is remembered. Code and the terminal stay monospaced

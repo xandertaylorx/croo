@@ -307,6 +307,7 @@ export interface CrooApi {
   searchFiles(cwd: string, query: string): Promise<string[]>
   searchChats(query: string): Promise<import('../chatsearch.js').ChatHit[]>
   setNotify(on: boolean): Promise<void>
+  setThemeMode(mode: 'system' | 'light' | 'dark'): Promise<void>
   setPrice(profile: string, input?: number, output?: number): Promise<void>
   /** Download the update, replace this app and relaunch. Resolves only on failure (on success the app quits). */
   installUpdate(): Promise<Result>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, safeStorage, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, safeStorage, shell, systemPreferences } from 'electron'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -675,6 +675,10 @@ function registerIpc() {
   ipcMain.handle('memory:clear', () => {
     clearMemory()
     pushState()
+  })
+  // Light or dark for the whole window, including the system chrome and prefers-color-scheme in the page.
+  ipcMain.handle('theme:mode', (_e, mode: string) => {
+    nativeTheme.themeSource = mode === 'light' || mode === 'dark' ? mode : 'system'
   })
   ipcMain.handle('notify:set', (_e, on: boolean) => {
     cfg = { ...cfg, notify: !!on }

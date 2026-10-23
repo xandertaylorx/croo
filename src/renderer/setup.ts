@@ -5,7 +5,7 @@ import type { AppState, McpServerInfo, PermissionMode } from '../shared/ipc.js'
 import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
 import type { IconName } from './dom.js'
-import { applyFont, croo, FONTS, installUpdate, onUpdateProgress, remember, store, updateProgress } from './store.js'
+import { applyFont, applyMode, applyPalette, croo, FONTS, installUpdate, MODES, onUpdateProgress, PALETTES, remember, store, updateProgress } from './store.js'
 
 type Choice = Preset | 'custom'
 
@@ -211,13 +211,13 @@ export function openSettings() {
   if (modal) return closeSettings()
   const content = h('div', { class: 'settings-pane' })
   const nav = h('nav', { class: 'settings-nav', 'aria-label': 'Settings sections' })
-  const card = h('div', { class: 'modal-card wide', role: 'dialog', 'aria-label': 'Settings' }, h('div', { class: 'settings' }, nav, content))
-  modal = h('div', { class: 'modal', onClick: (e: Event) => e.target === modal && closeSettings() }, card)
+  const card = h('div', { class: 'modal-card wide', role: 'dialog', 'aria-label': 'Settings' }, h('div', { class: 'settings' }, nav, content), h('button', { class: 'icon-btn settings-close', type: 'button', title: 'Close (Esc)', onClick: closeSettings }, icon('x', 16)))
+  modal = h('div', { class: 'modal settings-modal', onClick: (e: Event) => e.target === modal && closeSettings() }, card)
   document.getElementById('modal-root')!.append(modal)
   document.addEventListener('keydown', onKey, true)
 
   const head = (title: string, sub?: string) =>
-    h('div', { class: 'pane-head' }, h('div', null, h('h2', null, title), sub ? h('p', { class: 'muted' }, sub) : null), h('button', { class: 'icon-btn', type: 'button', title: 'Close', onClick: closeSettings }, icon('x', 16)))
+    h('div', { class: 'pane-head' }, h('div', null, h('h2', null, title), sub ? h('p', { class: 'muted' }, sub) : null))
 
   const profileCard = (p: AppState['profiles'][number], demo: boolean) => {
     const open = panels.get(p.name)
@@ -408,8 +408,12 @@ export function openSettings() {
     notifySwitch.checked = s.notify
     const diagSwitch = h('input', { class: 'switch', type: 'checkbox', role: 'switch', onChange: (e: Event) => void croo.setDiagnostics((e.target as HTMLInputElement).checked) })
     diagSwitch.checked = s.diagnostics
+    const row = (title: string, sub: string | null, control: HTMLElement) => h('div', { class: 'setting' }, h('div', { class: 'setting-text' }, h('b', null, title), sub ? h('small', null, sub) : null), control)
     return [
       head('General', 'Defaults for every chat.'),
+      h('div', { class: 'section-label' }, 'Appearance'),
+      palettePicker(),
+      h('div', { class: 'group' }, row('Mode', 'Follow your Mac, or stay light or dark.', modeControl()), row('Font', 'The typeface for Croo’s text. Code stays monospaced.', fontSelect())),
       h('div', { class: 'section-label' }, 'Profile'),
       profileRow(),
       h('div', { class: 'section-label' }, 'Permissions'),
@@ -427,44 +431,52 @@ export function openSettings() {
         EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
       ),
       h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
-      h('div', { class: 'section-label' }, 'Checks'),
+      h('div', { class: 'section-label' }, 'Behaviour'),
       h(
-        'label',
-        { class: 'switch-row' },
-        h('span', null, 'Check files after Croo edits them', h('small', null, 'Runs the project’s TypeScript compiler, or a syntax check for JavaScript, Python, JSON and Go, and tells Croo about errors right away.')),
-        diagSwitch,
+        'div',
+        { class: 'group' },
+        row('Check files after edits', 'Runs the project’s TypeScript compiler, or a syntax check for JavaScript, Python, JSON and Go, and tells Croo about errors right away.', diagSwitch),
+        row('Notifications', 'Tell me when a task finishes or needs my OK, while Croo is in the background.', notifySwitch),
       ),
       h('div', { class: 'section-label' }, 'Voice input'),
       voiceRow(),
-      h('div', { class: 'section-label' }, 'Notifications'),
-      h(
-        'label',
-        { class: 'switch-row' },
-        h('span', null, 'Tell me when a task finishes or needs my OK', h('small', null, 'Only while Croo is in the background.')),
-        notifySwitch,
-      ),
-      h('div', { class: 'section-label' }, 'Appearance'),
-      h('p', { class: 'muted' }, 'Croo follows your system’s light or dark setting.'),
-      h('div', { class: 'section-label' }, 'Font'),
-      fontChips(),
-      h('p', { class: 'muted' }, 'The typeface for Croo’s text. Code and the terminal stay monospaced.'),
     ]
   }
 
-  const fontChips = () => {
-    const row = h('div', { class: 'chips' })
-    const paintFonts = () => {
-      const cur = remember.get('font') ?? 'default'
+  const palettePicker = () => {
+    const row = h('div', { class: 'palettes', role: 'radiogroup', 'aria-label': 'Colour palette' })
+    const paintPalettes = () => {
+      const cur = remember.get('palette') ?? 'default'
       row.replaceChildren(
-        ...FONTS.map((f) => {
-          const b = h('button', { class: `chipbtn ${cur === f.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': cur === f.id, onClick: () => (applyFont(f.id), paintFonts()) }, f.label)
-          if (f.stack) b.style.fontFamily = f.stack
-          return b
-        }),
+        ...PALETTES.map((p) =>
+          h(
+            'button',
+            { class: `palette ${cur === p.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': cur === p.id, onClick: () => (applyPalette(p.id), paintPalettes()) },
+            h('span', { class: 'swatches' }, p.swatch.map((c) => h('i', { style: `background:${c}` }))),
+            h('b', null, p.label),
+            h('small', null, p.note),
+          ),
+        ),
       )
     }
-    paintFonts()
+    paintPalettes()
     return row
+  }
+
+  const modeControl = () => {
+    const seg = h('div', { class: 'seg-ctl', role: 'radiogroup' })
+    const paintMode = () => {
+      const cur = remember.get('mode') ?? 'system'
+      seg.replaceChildren(...MODES.map((m) => h('button', { class: cur === m.id ? 'on' : '', type: 'button', role: 'radio', 'aria-checked': cur === m.id, onClick: () => (applyMode(m.id), paintMode()) }, m.label)))
+    }
+    paintMode()
+    return seg
+  }
+
+  const fontSelect = () => {
+    const sel = h('select', { class: 'input select', 'aria-label': 'Font', onChange: () => applyFont(sel.value) }, FONTS.map((f) => h('option', { value: f.id }, f.label)))
+    sel.value = remember.get('font') ?? 'default'
+    return sel
   }
 
   const updateRow = () => {
@@ -512,7 +524,7 @@ export function openSettings() {
       h('div', { class: 'section-label' }, 'Project instructions'),
       h('p', { class: 'muted' }, 'Croo reads AGENTS.md, CLAUDE.md and CROO.md in each folder at the start of every turn. Type ', h('kbd', null, '/init'), ' in a chat and it will study the project and write AGENTS.md for you.'),
       h('div', { class: 'section-label' }, 'Keyboard shortcuts'),
-      h('div', { class: 'shortcuts' }, SHORTCUTS.map(([k, d]) => h('div', { class: 'sc' }, h('span', null, d), h('span', { class: 'sc-keys' }, (k.match(/⌘|⇧|⌥|⌃|↵|\/|[A-Za-z0-9,]+/g) ?? []).map((t) => (t === '/' ? h('i', null, '/') : h('kbd', null, t))))))),
+      h('div', { class: 'shortcuts' }, SHORTCUTS.map(([k, d]) => h('div', { class: 'sc' }, h('span', null, d), h('span', { class: 'sc-keys' }, (k.match(/⌘|⇧|⌥|⌃|↵|\/|[A-Za-z0-9,]+/g) ?? []).map((t) => (t === '/' ? h('i', null, '/') : h('kbd', null, t))))))),      h('div', { class: 'built-by' }, 'Built by ', h('button', { class: 'crooli-link', type: 'button', title: 'crooli.com', onClick: () => void croo.openExternal('https://crooli.com') }, 'Crooli')),
     ]
   }
 
@@ -522,6 +534,8 @@ export function openSettings() {
     nav.replaceChildren(
       h('div', { class: 'settings-title' }, 'Settings'),
       ...tabs.map(([id, label, ic]) => h('button', { class: `nav-btn ${pane === id ? 'on' : ''}`, type: 'button', 'aria-current': pane === id ? 'page' : undefined, onClick: () => ((pane = id), paint()) }, icon(ic, 16), label)),
+      h('span', { class: 'push-down' }),
+      h('div', { class: 'settings-ver' }, `Croo ${store.state.version}`),
     )
     content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : pane === 'mcp' ? mcpPane() : pane === 'memory' ? memoryPane() : aboutPane()))
   }

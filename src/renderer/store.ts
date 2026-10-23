@@ -96,6 +96,30 @@ export function applyFont(id: string) {
 }
 applyFont(remember.get('font') ?? 'default')
 
+/** Colour palettes. Each one has a light and a dark side; "default" is Croo's own neutral greys with the frog green. */
+export const PALETTES: { id: string; label: string; note: string; swatch: [string, string, string, string] }[] = [
+  { id: 'default', label: 'Croo', note: 'Neutral greys and frog green', swatch: ['#fbfbfa', '#1c1c1a', '#2a9a58', '#f3f3f1'] },
+  { id: 'crooli', label: 'Crooli', note: 'Ivory, ink and lapis, from crooli.com', swatch: ['#f6f4ee', '#1b1714', '#3e5ba9', '#d59a76'] },
+]
+export const MODES: { id: 'system' | 'light' | 'dark'; label: string }[] = [
+  { id: 'system', label: 'System' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+]
+export function applyPalette(id: string) {
+  const p = PALETTES.find((x) => x.id === id) ?? PALETTES[0]
+  if (p.id === 'default') delete document.documentElement.dataset.palette
+  else document.documentElement.dataset.palette = p.id
+  remember.set('palette', p.id)
+}
+export function applyMode(id: string) {
+  const m = MODES.find((x) => x.id === id) ?? MODES[0]
+  void croo.setThemeMode(m.id)
+  remember.set('mode', m.id)
+}
+applyPalette(remember.get('palette') ?? 'default')
+applyMode(remember.get('mode') ?? 'system')
+
 /** Where an in-app update is, for the sidebar banner and Settings → About. Null when none is running. */
 export let updateProgress: { text: string; fraction?: number } | null = null
 const updateListeners = new Set<() => void>()
