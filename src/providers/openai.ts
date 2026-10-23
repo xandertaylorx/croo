@@ -5,14 +5,24 @@ import { parseArgs, postJson, sseData } from './sse.js'
 
 export function toOpenAIMessages(system: string, messages: Msg[]) {
   const out: any[] = [{ role: 'system', content: system }]
+  // Tool messages can only hold text, so screenshots go in a user message right after the run of tool results.
+  let pending: any[] = []
+  const flush = () => {
+    if (pending.length) out.push({ role: 'user', content: [{ type: 'text', text: 'Images from the tool results above:' }, ...pending] })
+    pending = []
+  }
   for (const m of messages) {
+    if (m.role !== 'tool') flush()
     if (m.role === 'user') {
       out.push({
         role: 'user',
         content: m.images?.length ? [{ type: 'text', text: m.content }, ...m.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } }))] : m.content,
       })
     }
-    else if (m.role === 'tool') out.push({ role: 'tool', tool_call_id: m.toolCallId, content: m.content })
+    else if (m.role === 'tool') {
+      out.push({ role: 'tool', tool_call_id: m.toolCallId, content: m.content })
+      for (const i of m.images ?? []) pending.push({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}` } })
+    }
     else {
       const msg: any = { role: 'assistant', content: m.content || null }
       if (m.toolCalls?.length) {
@@ -21,6 +31,7 @@ export function toOpenAIMessages(system: string, messages: Msg[]) {
       out.push(msg)
     }
   }
+  flush()
   return out
 }
 

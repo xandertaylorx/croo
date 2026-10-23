@@ -10,7 +10,7 @@ import type { Attachment, AttachmentView, RunKind } from '../shared/ipc.js'
 import { attachmentsFromFiles, shrinkImage } from './attach.js'
 import { costOf, formatCost } from '../cost.js'
 import { bus, croo, store, type ChatView } from './store.js'
-import type { PermissionMode } from '../shared/ipc.js'
+import type { PermissionMode, SlashCommand } from '../shared/ipc.js'
 import { voiceControls } from './voice.js'
 import { chatToMarkdown, exportName } from '../exportmd.js'
 
@@ -25,6 +25,13 @@ const VERBS: Record<string, [string, string, IconName]> = {
   web_fetch: ['Fetching', 'Fetched', 'globe'],
   todo_write: ['Planning', 'Plan', 'check'],
   remember: ['Remembering', 'Remembered', 'sparkle'],
+  bash_output: ['Reading output of', 'Read output of', 'terminal'],
+  bash_kill: ['Stopping', 'Stopped', 'stop'],
+  browser: ['Browsing', 'Browsed', 'globe'],
+  task: ['Exploring', 'Explored', 'search'],
+  skill: ['Loading skill', 'Loaded skill', 'sparkle'],
+  propose_plan: ['Proposing plan', 'Proposed plan', 'map'],
+  diagnostics: ['Checking', 'Checked', 'check'],
 }
 const TITLES: Record<string, string> = {
   bash: 'Run this command?',
@@ -35,6 +42,13 @@ const TITLES: Record<string, string> = {
   grep: 'Search the project?',
   multi_edit: 'Make these edits?',
   web_fetch: 'Fetch this page?',
+  browser: 'Open this page?',
+  propose_plan: 'Approve this plan?',
+  hooks: 'Run this folder’s hooks?',
+  task: 'Start a research subagent?',
+  skill: 'Load this skill?',
+  bash_output: 'Read this command’s output?',
+  bash_kill: 'Stop this command?',
 }
 /** MCP tools are named mcp__server__tool; show them as "Called github · create_issue". */
 const mcpLabel = (name: string) => name.split('__').slice(1).join(' · ')
@@ -166,12 +180,25 @@ function copyReply(btn: HTMLElement, text: string) {
   })
 }
 
+/** Which typed message this is (0-based), the number its checkpoint is saved under. */
+const ordinalOf = (v: ChatView, item: Item) => v.items.filter((i) => i.kind === 'user').indexOf(item as Extract<Item, { kind: 'user' }>)
+
+/** Files Croo changed at or after this message can be put back. */
+const restorable = (v: ChatView, ordinal: number) => ordinal >= 0 && (v.checkpoints ?? []).some((t) => t >= ordinal)
+
 function renderUser(item: Extract<Item, { kind: 'user' }>): HTMLElement {
   const atts = item.attachments ?? []
+  const v = m?.view
+  const canRestore = !!v && restorable(v, ordinalOf(v, item))
   return h(
     'div',
     { class: 'msg user' },
-    h('div', { class: 'msg-actions' }, h('button', { class: 'icon-btn small', type: 'button', title: 'Edit and resend', onClick: () => startEdit(item) }, icon('pencil', 13))),
+    h(
+      'div',
+      { class: 'msg-actions' },
+      canRestore ? h('button', { class: 'icon-btn small', type: 'button', title: 'Restore files to before this message', onClick: (e: Event) => void restoreFrom(item, e.currentTarget as HTMLElement) }, icon('undo', 13)) : null,
+      h('button', { class: 'icon-btn small', type: 'button', title: 'Edit and resend', onClick: () => startEdit(item) }, icon('pencil', 13)),
+    ),
     atts.length ? h('div', { class: 'att-cards' }, atts.map(attCard)) : null,
     item.text ? h('div', { class: 'bubble' }, ...userText(item.text)) : null,
   )
@@ -184,7 +211,10 @@ function startEdit(item: Extract<Item, { kind: 'user' }>) {
   if (!el) return
   const area = h('textarea', { class: 'edit-area', rows: 2, spellcheck: 'true' })
   area.value = item.text
-  const go = () => void rerun(item, area.value.trim())
+  const ordinal = ordinalOf(m.view, item)
+  const undo = h('input', { type: 'checkbox', class: 'edit-undo' }) as HTMLInputElement
+  undo.checked = restorable(m.view, ordinal)
+  const go = () => void rerun(item, area.value.trim(), undo.checked)
   const grow = () => ((area.style.height = 'auto'), (area.style.height = Math.min(area.scrollHeight, 260) + 'px'))
   area.addEventListener('input', grow)
   area.addEventListener('keydown', (e) => {
@@ -199,7 +229,13 @@ function startEdit(item: Extract<Item, { kind: 'user' }>) {
       { class: 'edit-box' },
       item.attachments?.length ? h('div', { class: 'att-cards' }, item.attachments.map(attCard)) : null,
       area,
-      h('div', { class: 'edit-foot' }, h('small', null, 'Replaces everything after this message. Changes already made to files stay.'), h('span', { class: 'push-right' }), h('button', { class: 'btn ghost small', type: 'button', onClick: () => touch(item) }, 'Cancel'), h('button', { class: 'btn primary small', type: 'button', onClick: go }, 'Resend')),
+      h(
+        'div',
+        { class: 'edit-foot' },
+        restorable(m.view, ordinal)
+          ? h('label', { class: 'edit-undo-row' }, undo, h('small', null, 'Replaces everything after this message, and undoes Croo’s file changes since'))
+          : h('small', null, 'Replaces everything after this message.'),
+        h('span', { class: 'push-right' }), h('button', { class: 'btn ghost small', type: 'button', onClick: () => touch(item) }, 'Cancel'), h('button', { class: 'btn primary small', type: 'button', onClick: go }, 'Resend')),
     ),
   )
   el.replaceWith(form)
@@ -208,14 +244,58 @@ function startEdit(item: Extract<Item, { kind: 'user' }>) {
 }
 
 /** Cut the chat back to just before `item`, then send `text` (with the same attachments) as a fresh message. */
-async function rerun(item: Extract<Item, { kind: 'user' }>, text: string) {
+async function rerun(item: Extract<Item, { kind: 'user' }>, text: string, restoreFiles = false) {
   if (!m || !text) return
   const v = m.view
-  const ordinal = v.items.filter((i) => i.kind === 'user').indexOf(item)
-  const res = await croo.rewind(v.id, ordinal)
+  const ordinal = ordinalOf(v, item)
+  const res = await croo.rewind(v.id, ordinal, restoreFiles)
   if (!res.ok) return void push(v, { kind: 'error', text: res.error })
   for (const it of v.items.slice(v.items.indexOf(item))) remove(it)
+  v.checkpoints = (v.checkpoints ?? []).filter((t) => t < ordinal)
+  if (res.restored.length) {
+    refreshFiles()
+    void refreshGit()
+  }
   await sendMessage(v, text, res.attachments)
+}
+
+const listFiles = (files: string[]) => (files.length > 3 ? `${files.slice(0, 3).join(', ')} and ${files.length - 3} more` : files.join(', '))
+
+/** Put the files Croo changed at and after this message back, keeping the conversation. Asks first. */
+async function restoreFrom(item: Item, anchor: HTMLElement) {
+  if (!m || running(m.view)) return
+  const v = m.view
+  const ordinal = ordinalOf(v, item)
+  const files = await croo.changedFiles(v.id, ordinal)
+  if (!files.length) return
+  document.querySelector('.restore-pop')?.remove()
+  const close = () => (pop.remove(), document.removeEventListener('mousedown', outside, true))
+  const outside = (e: MouseEvent) => !pop.contains(e.target as Node) && close()
+  const go = async () => {
+    close()
+    const r = await croo.restore(v.id, ordinal)
+    if (!r.ok) return void push(v, { kind: 'error', text: r.error })
+    push(v, { kind: 'note', text: `Restored ${r.restored.length} file${r.restored.length === 1 ? '' : 's'} to before this message: ${listFiles(r.restored)}` })
+    refreshFiles()
+    void refreshGit()
+  }
+  const pop = h(
+    'div',
+    { class: 'restore-pop' },
+    h('b', null, `Restore ${files.length} file${files.length === 1 ? '' : 's'}?`),
+    h('small', null, 'Croo’s changes from this message on are undone. The conversation stays, and changes made by commands are not tracked.'),
+    h('ul', null, files.slice(0, 8).map((f) => h('li', null, f)), files.length > 8 ? h('li', null, `… ${files.length - 8} more`) : null),
+    h('div', { class: 'restore-actions' }, h('button', { class: 'btn ghost small', type: 'button', onClick: close }, 'Cancel'), h('button', { class: 'btn primary small', type: 'button', onClick: () => void go() }, 'Restore')),
+  )
+  anchor.closest('.msg')?.append(pop)
+  document.addEventListener('mousedown', outside, true)
+}
+
+/** Undo the file changes of the last turn. */
+async function undoLast(btn: HTMLElement) {
+  if (!m) return
+  const last = [...m.view.items].reverse().find((i) => i.kind === 'user')
+  if (last) await restoreFrom(last, m.els.get(last) ?? btn)
 }
 
 /** Send the last message again, replacing the reply it got. */
@@ -278,7 +358,8 @@ function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
     h('span', { class: 'tool-summary' }, item.summary),
     h('span', { class: 'tool-state' }, state),
   )
-  return h('div', { class: `tool ${item.status}` }, row, open.has(item) && expandable ? h('pre', { class: 'tool-out' }, item.result) : null)
+  const shot = item.image ? h('button', { class: 'tool-shot', type: 'button', title: 'Open screenshot', onClick: () => openLightbox({ name: 'Screenshot', kind: 'image', dataUrl: item.image }) }, h('img', { src: item.image, alt: 'Screenshot' })) : null
+  return h('div', { class: `tool ${item.status}` }, row, shot, open.has(item) && expandable ? h('pre', { class: 'tool-out' }, item.result) : null)
 }
 
 function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
@@ -291,11 +372,14 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
     else setStatus(v, 'working', `${verb(item.name, true)} ${item.summary}`)
   }
   const title = TITLES[item.name] ?? (item.name.startsWith('mcp__') ? `Use ${mcpLabel(item.name)}?` : 'Allow this?')
-  const manual = store.state.permissionMode === 'manual'
+  // The plan and a folder's hooks are a yes or no for now, never "always".
+  const once = item.name === 'propose_plan' || item.name === 'hooks'
+  const manual = store.state.permissionMode === 'manual' || once
+  const [yes, no] = item.name === 'propose_plan' ? ['Approve and start', 'Keep planning'] : item.name === 'hooks' ? ['Trust and run', 'Skip hooks'] : ['Allow', 'Deny']
   const p = item.preview
   return h(
     'div',
-    { class: 'confirm' },
+    { class: `confirm ${p.kind === 'plan' ? 'plan' : ''}` },
     h(
       'div',
       { class: 'confirm-head' },
@@ -307,10 +391,10 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
     h(
       'div',
       { class: 'confirm-actions' },
-      h('button', { class: 'btn primary', type: 'button', onClick: () => answer('y') }, 'Allow'),
+      h('button', { class: 'btn primary', type: 'button', onClick: () => answer('y') }, yes),
       manual ? null : h('button', { class: 'btn', type: 'button', onClick: () => answer('a') }, `Always allow ${item.name === 'bash' ? 'commands' : item.name === 'edit_file' || item.name === 'write_file' || item.name === 'multi_edit' ? 'edits' : item.name === 'web_fetch' ? 'fetches' : 'this'}`),
-      h('button', { class: 'btn ghost', type: 'button', onClick: () => answer('n') }, 'Deny'),
-      h('span', { class: 'confirm-keys' }, '⌘↵ allow · esc deny'),
+      h('button', { class: 'btn ghost', type: 'button', onClick: () => answer('n') }, no),
+      h('span', { class: 'confirm-keys' }, once ? `⌘↵ ${yes.toLowerCase()} · esc ${no.toLowerCase()}` : '⌘↵ allow · esc deny'),
     ),
   )
 }
@@ -318,6 +402,7 @@ function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
 function renderPreview(p: PreviewDto): HTMLElement {
   if (p.kind === 'command') return h('pre', { class: 'cmd' }, h('span', { class: 'prompt' }, '$ '), p.command)
   if (p.kind === 'read') return h('pre', { class: 'cmd' }, p.summary)
+  if (p.kind === 'plan') return h('div', { class: 'plan-body md', html: renderMarkdown(p.plan) })
   const rows = p.lines.map((l) =>
     l === null
       ? h('div', { class: 'dl gap' }, '⋯')
@@ -547,7 +632,9 @@ function paintStatus() {
     status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)))
   } else if (v.note) {
     frog.set(v.note.startsWith('Stopped') ? 'idle' : v.note.startsWith('Something') ? 'oops' : 'happy')
-    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)), h('button', { class: 'status-btn', type: 'button', title: 'Retry', onClick: () => void retryLast() }, icon('refresh', 12), 'Retry'))
+    const lastTurn = v.items.filter((i) => i.kind === 'user').length - 1
+    const undo = v.kind === 'code' && (v.checkpoints ?? []).includes(lastTurn) ? h('button', { class: 'status-btn', type: 'button', title: 'Undo the file changes from this turn', onClick: (e: Event) => void undoLast(e.currentTarget as HTMLElement) }, icon('undo', 12), 'Undo changes') : null
+    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)), h('button', { class: 'status-btn', type: 'button', title: 'Retry', onClick: () => void retryLast() }, icon('refresh', 12), 'Retry'), ...(undo ? [undo] : []))
   }
   syncSend()
   follow()
@@ -646,11 +733,25 @@ export function handleEvent(ev: ChatEvent) {
       if (run?.kind === 'tool') {
         run.status = status
         run.result = ev.result
+        run.image = ev.image
         if (m?.view === v) touch(run)
-      } else push(v, { kind: 'tool', name: ev.name, summary: ev.summary, status, result: ev.result })
+      } else push(v, { kind: 'tool', name: ev.name, summary: ev.summary, status, result: ev.result, image: ev.image })
       setStatus(v, 'thinking')
       break
     }
+    case 'note':
+      push(v, { kind: 'note', text: ev.text })
+      break
+    case 'checkpoints':
+      v.checkpoints = ev.turns
+      if (m?.view === v) {
+        for (const it of v.items) if (it.kind === 'user') touch(it)
+        paintStatus()
+      }
+      break
+    case 'planApproved':
+      push(v, { kind: 'note', text: 'Plan approved. Plan mode is off and Croo is working in Auto mode.' })
+      break
     case 'compacted':
       push(v, { kind: 'note', text: 'Earlier messages were summarized to free up context' })
       break
@@ -914,6 +1015,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const profile = state.profiles.find((p) => p.active)
   const title = allChats().find((c) => c.id === view.id)?.title ?? 'New chat'
   const plain = view.kind === 'chat'
+  if (!plain) loadSlashCommands(view.cwd)
 
   const thread = h('div', { class: 'thread' })
   const scroll = h('div', { class: 'scroll' }, thread)
@@ -960,10 +1062,13 @@ export function showChat(view: ChatView, root: HTMLElement) {
       if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) return e.preventDefault(), insertMention(mention.index)
       if (e.key === 'Escape') return e.stopPropagation(), closeMention()
     }
-    if (slashOpen() && (e.key === 'Tab' || (e.key === 'Enter' && input.value.trim() !== '/init'))) {
+    if (slash && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault()
-      input.value = '/init '
-      input.dispatchEvent(new Event('input'))
+      slash.index = (slash.index + (e.key === 'ArrowDown' ? 1 : -1) + slash.items.length) % slash.items.length
+      paintSlash()
+    } else if (slash && (e.key === 'Tab' || (e.key === 'Enter' && !e.isComposing && input.value.trim() !== `/${slash.items[slash.index].name}`))) {
+      e.preventDefault()
+      pickSlash(slash.index)
     } else if (slashOpen() && e.key === 'Escape') {
       e.stopPropagation()
       closeSlash()
@@ -1080,6 +1185,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
 const MODES: { id: PermissionMode; label: string; icon: IconName; desc: string }[] = [
   { id: 'manual', label: 'Manual', icon: 'shield', desc: 'Asks before every action, even reading a file.' },
   { id: 'auto', label: 'Auto', icon: 'shieldCheck', desc: 'Reads, edits in this folder and safe commands just run. Anything else asks.' },
+  { id: 'plan', label: 'Plan', icon: 'map', desc: 'Looks around without changing anything, then asks you to approve a plan.' },
   { id: 'bypass', label: 'Bypass', icon: 'bolt', desc: 'Never asks. Every command runs immediately.' },
 ]
 
@@ -1161,19 +1267,59 @@ function instructionChip(files: string[], input: HTMLTextAreaElement): HTMLEleme
 
 // ---------- slash commands ----------
 
-const slashOpen = () => !!document.querySelector('.slash-menu')
+/** Built-in and custom commands per folder, loaded when a chat opens. */
+const commandCache = new Map<string, SlashCommand[]>()
+let slash: { items: SlashCommand[]; index: number } | null = null
+
+export function loadSlashCommands(cwd: string) {
+  void croo.listCommands(cwd).then((list) => commandCache.set(cwd, list))
+}
+
+const slashOpen = () => !!slash
 function closeSlash() {
+  slash = null
   document.querySelector('.slash-menu')?.remove()
 }
+
 function updateSlash() {
   if (!m || m.view.kind === 'chat') return
-  const v = m.input.value
-  const show = /^\/[a-z]*$/.test(v) && '/init'.startsWith(v)
-  if (!show) return closeSlash()
-  if (slashOpen()) return
+  const typed = /^\/([\w-]*)$/.exec(m.input.value)
+  const items = typed ? (commandCache.get(m.view.cwd) ?? []).filter((c) => c.name.startsWith(typed[1])) : []
+  if (!items.length) return closeSlash()
+  const keep = slash?.items[slash.index]?.name
+  slash = { items, index: Math.max(0, items.findIndex((c) => c.name === keep)) }
+  paintSlash()
+}
+
+function paintSlash() {
+  if (!m || !slash) return
+  const s = slash
+  document.querySelector('.slash-menu')?.remove()
   m.mode.closest('.composer-wrap')?.append(
-    h('div', { class: 'slash-menu', role: 'listbox' }, h('button', { class: 'slash-item on', type: 'button', onMousedown: (e: Event) => e.preventDefault(), onClick: () => (m!.input.value = '/init ', m!.input.dispatchEvent(new Event('input')), m!.input.focus()) }, h('b', null, '/init'), h('span', null, 'Study this project and write AGENTS.md'), h('kbd', null, '⇥'))),
+    h(
+      'div',
+      { class: 'slash-menu', role: 'listbox' },
+      s.items.map((c, i) =>
+        h(
+          'button',
+          { class: `slash-item ${i === s.index ? 'on' : ''}`, type: 'button', role: 'option', onMousedown: (e: Event) => e.preventDefault(), onClick: () => pickSlash(i) },
+          h('b', null, `/${c.name}`),
+          h('span', null, c.description, c.argumentHint ? h('small', null, ` ${c.argumentHint}`) : null),
+          c.source !== 'builtin' ? h('small', { class: 'slash-src' }, c.source === 'project' ? 'project' : 'yours') : null,
+          i === s.index ? h('kbd', null, '⇥') : null,
+        ),
+      ),
+    ),
   )
+  document.querySelector('.slash-item.on')?.scrollIntoView({ block: 'nearest' })
+}
+
+function pickSlash(i: number) {
+  if (!m || !slash) return
+  m.input.value = `/${slash.items[i].name} `
+  closeSlash()
+  m.input.dispatchEvent(new Event('input'))
+  m.input.focus()
 }
 
 function cycleMode() {

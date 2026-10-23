@@ -18,9 +18,17 @@ export function toGeminiContents(messages: Msg[]) {
       out.push({ role: 'model', parts })
     } else {
       const part = { functionResponse: { name: m.name, response: m.isError ? { error: m.content } : { output: m.content } } }
+      const images = (m.images ?? []).map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))
       const last = out[out.length - 1]
-      if (last?.role === 'user' && last.parts[0]?.functionResponse) last.parts.push(part)
-      else out.push({ role: 'user', parts: [part] })
+      if (last?.role === 'user' && last.parts[0]?.functionResponse) {
+        // Function responses stay together at the front, any images after them.
+        const firstImage = last.parts.findIndex((p: any) => p.inlineData)
+        if (firstImage < 0) last.parts.push(part, ...images)
+        else {
+          last.parts.splice(firstImage, 0, part)
+          last.parts.push(...images)
+        }
+      } else out.push({ role: 'user', parts: [part, ...images] })
     }
   }
   return out

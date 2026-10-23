@@ -21,18 +21,28 @@ const isMeta = (m: unknown): m is Meta => !!m && typeof m === 'object' && Array.
 
 export function toResponsesInput(messages: Msg[]) {
   const out: any[] = []
+  let pending: any[] = []
+  const flush = () => {
+    if (pending.length) out.push({ role: 'user', content: [{ type: 'input_text', text: 'Images from the tool results above:' }, ...pending] })
+    pending = []
+  }
   for (const m of messages) {
+    if (m.role !== 'tool') flush()
     if (m.role === 'user') {
       const content: any[] = [{ type: 'input_text', text: m.content }]
       for (const i of m.images ?? []) content.push({ type: 'input_image', image_url: `data:${i.mime};base64,${i.data}` })
       out.push({ role: 'user', content })
-    } else if (m.role === 'tool') out.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content })
+    } else if (m.role === 'tool') {
+      out.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content })
+      for (const i of m.images ?? []) pending.push({ type: 'input_image', image_url: `data:${i.mime};base64,${i.data}` })
+    }
     else {
       if (isMeta(m.meta)) out.push(...m.meta.responses)
       if (m.content) out.push({ role: 'assistant', content: m.content })
       for (const c of m.toolCalls ?? []) out.push({ type: 'function_call', call_id: c.id, name: c.name, arguments: JSON.stringify(c.args) })
     }
   }
+  flush()
   return out
 }
 

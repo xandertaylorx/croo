@@ -1,7 +1,7 @@
 import { PRESETS, type Preset } from '../providers/presets.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
-import type { AppState, McpServerInfo } from '../shared/ipc.js'
+import type { AppState, McpServerInfo, PermissionMode } from '../shared/ipc.js'
 import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
 import type { IconName } from './dom.js'
@@ -175,9 +175,10 @@ function keyForm(name: string, close: () => void): HTMLElement {
 type Pane = 'providers' | 'general' | 'mcp' | 'memory' | 'about'
 let pane: Pane = 'providers'
 
-const MODE_OPTIONS: { id: 'manual' | 'auto' | 'bypass'; label: string; icon: IconName; desc: string }[] = [
+const MODE_OPTIONS: { id: PermissionMode; label: string; icon: IconName; desc: string }[] = [
   { id: 'manual', label: 'Manual', icon: 'shield', desc: 'Asks before every action, even reading a file.' },
   { id: 'auto', label: 'Auto', icon: 'shieldCheck', desc: 'Reads, edits in the folder and safe commands run. Anything else asks.' },
+  { id: 'plan', label: 'Plan', icon: 'map', desc: 'Researches without changing anything, then asks you to approve a plan.' },
   { id: 'bypass', label: 'Bypass', icon: 'bolt', desc: 'Never asks. Commands run immediately.' },
 ]
 const EFFORT_OPTIONS: { id: Effort; label: string }[] = [
@@ -405,6 +406,8 @@ export function openSettings() {
     const active = s.profiles.find((p) => p.active)
     const notifySwitch = h('input', { class: 'switch', type: 'checkbox', role: 'switch', onChange: (e: Event) => void croo.setNotify((e.target as HTMLInputElement).checked) })
     notifySwitch.checked = s.notify
+    const diagSwitch = h('input', { class: 'switch', type: 'checkbox', role: 'switch', onChange: (e: Event) => void croo.setDiagnostics((e.target as HTMLInputElement).checked) })
+    diagSwitch.checked = s.diagnostics
     return [
       head('General', 'Defaults for every chat.'),
       h('div', { class: 'section-label' }, 'Profile'),
@@ -424,6 +427,13 @@ export function openSettings() {
         EFFORT_OPTIONS.map((o) => h('button', { class: `chipbtn ${s.effort === o.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': s.effort === o.id, onClick: () => void croo.setEffort(o.id) }, o.label)),
       ),
       h('p', { class: 'muted' }, active?.efforts.length ? `${active.model} accepts ${active.efforts.join(', ')}. Higher levels think longer and cost more.` : 'The current model has no effort setting. The choice applies to models that do.'),
+      h('div', { class: 'section-label' }, 'Checks'),
+      h(
+        'label',
+        { class: 'switch-row' },
+        h('span', null, 'Check files after Croo edits them', h('small', null, 'Runs the project’s TypeScript compiler, or a syntax check for JavaScript, Python, JSON and Go, and tells Croo about errors right away.')),
+        diagSwitch,
+      ),
       h('div', { class: 'section-label' }, 'Voice input'),
       voiceRow(),
       h('div', { class: 'section-label' }, 'Notifications'),

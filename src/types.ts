@@ -8,9 +8,17 @@ export interface ToolCall {
 
 export type Msg = (
   /** `display` is what the chat shows when it differs from what the model got (e.g. "/init"). */
-  | { role: 'user'; content: string; display?: string; images?: ImageAtt[]; attached?: AttachedFile[] }
+  | {
+      role: 'user'
+      content: string
+      display?: string
+      images?: ImageAtt[]
+      attached?: AttachedFile[]
+      /** Written by Croo, not typed (e.g. a Stop hook's feedback). Shown as a note and not counted as a turn. */
+      auto?: boolean
+    }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; thinking?: string; /** Provider data that must round-trip, e.g. Anthropic's signed thinking blocks. */ meta?: unknown }
-  | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean }
+  | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean; /** e.g. a browser screenshot, for models that can see. */ images?: ImageAtt[] }
 ) & {
   /**
    * Set when the conversation was compacted: a summary of every message before this one. The model is sent
@@ -99,8 +107,8 @@ export interface McpServerConfig {
   secretsEnc?: string
 }
 
-/** manual: ask for everything · auto: ask only when it matters · bypass: never ask */
-export type PermissionMode = 'manual' | 'auto' | 'bypass'
+/** manual: ask for everything · auto: ask only when it matters · plan: look but don't touch · bypass: never ask */
+export type PermissionMode = 'manual' | 'auto' | 'plan' | 'bypass'
 
 export interface Config {
   activeProfile: string
@@ -118,4 +126,8 @@ export interface Config {
   mcpServers?: Record<string, McpServerConfig>
   userName?: string
   avatar?: string
+  /** Check edited files with the project's type checker or a syntax check and tell the agent about errors. */
+  diagnostics?: boolean
+  /** Folders whose .croo/hooks.json the user trusted, as "folder#fingerprint". */
+  trustedHooks?: string[]
 }

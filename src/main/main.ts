@@ -9,8 +9,15 @@ import { EFFORTS, effortLevels, type Effort } from '../effort.js'
 import { isLocalUrl, loadConfig, maskKey, resolveApiKey, saveConfig, defaultConfig } from '../config.js'
 import { Permissions } from '../permissions.js'
 import { INIT_PROMPT, buildChatPrompt, buildSystemPrompt, instructionFiles, type UserContext } from '../prompt.js'
+import { Checkpoints } from '../checkpoint.js'
+import { BUILTIN_COMMANDS, expandCommand, loadCommands, loadSkills, skillsBlock } from '../commands.js'
+import { Hooks, globalHooks, projectHooks } from '../hooks.js'
+import { PLAN_TOOLS } from '../permissions.js'
+import { planTool, skillTool, taskTool } from '../tools/meta.js'
+import { killAllBackground } from '../tools/background.js'
+import { browserTool, closeAgentBrowser } from './agentbrowser.js'
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
-import { TOOLS, rememberTool, setExtraTools } from '../tools/index.js'
+import { TOOLS, readOnlyBash, rememberTool, setExtraTools, type Tool } from '../tools/index.js'
 import { McpManager, parseMcpJson } from '../mcp.js'
 import { setRipgrepDir } from '../tools/rg.js'
 import { contextWindow } from '../compact.js'
@@ -27,7 +34,7 @@ import { deleteSession, listSessions, loadSession, newSession, saveSession, titl
 import type { AddProfileRequest, AppState, Attachment, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result, RunKind, UpdateInfo } from '../shared/ipc.js'
 import { Ignore } from '../tools/ignore.js'
 import { safePath } from '../tools/index.js'
-import { clip, rewindTo, toItems, toPreviewDto } from '../transcript.js'
+import { clip, rewindTo, toItems, toPreviewDto, typedCount } from '../transcript.js'
 import { searchChats } from '../chatsearch.js'
 import { expandMentions, fileBlock, searchFiles } from '../mentions.js'
 import { priceFor } from '../pricing.js'
@@ -57,10 +64,16 @@ interface Runtime {
   abort?: AbortController
   permissions: Permissions
   pending?: { id: string; resolve: (a: 'y' | 'n' | 'a') => void }
+  checkpoints: Checkpoints
+  /** Told to the model with the next message, e.g. that the user restored some files. */
+  note?: string
+  /** The user said no to this folder's hooks for this chat. */
+  hooksDenied?: boolean
 }
 const runtimes = new Map<string, Runtime>()
 const mcp = new McpManager(() => pushState(), app.getVersion())
-setExtraTools(() => mcp.tools())
+setExtraTools(() => [...mcp.tools(), browserTool, taskTool, skillTool, planTool])
+const newRuntime = (session: Session): Runtime => ({ session, permissions: newPermissions(), checkpoints: new Checkpoints(session.id) })
 const newPermissions = () => new Permissions(cfg.permissionMode, (t) => mcp.readOnly(t))
 const terminals = new Terminals()
 const runner = new Runner()
@@ -166,6 +179,7 @@ function buildState(): AppState {
     effort: cfg.effort,
     notify: cfg.notify,
     memory: cfg.memory !== false,
+    diagnostics: cfg.diagnostics !== false,
     mcpServers: [...mcp.servers.values()].map((s) => ({
       name: s.name,
       target: s.cfg.url ?? [s.cfg.command, ...(s.cfg.args ?? [])].join(' '),
@@ -256,7 +270,7 @@ function runtime(id: string): Runtime | null {
   if (existing) return existing
   const session = loadSession(id)
   if (!session) return null
-  const rt: Runtime = { session, permissions: newPermissions() }
+  const rt = newRuntime(session)
   runtimes.set(id, rt)
   return rt
 }
@@ -284,6 +298,9 @@ function buildUserMessage(text: string, atts: Attachment[], plain: boolean, cwd:
     const extra = text.trim().slice(5).trim()
     return { role: 'user', content: `${INIT_PROMPT}${extra ? `\n\nExtra guidance: ${extra}` : ''}`, display: text.trim() }
   }
+  // A custom command from .croo/commands sends its text; the chat shows what was typed.
+  const custom = plain ? null : expandCommand(text, cwd)
+  if (custom) return { role: 'user', content: custom, display: text.trim() }
   const images: ImageAtt[] = atts
     .filter((a) => a.kind === 'image' && a.dataUrl?.startsWith('data:'))
     .slice(0, 8)
@@ -298,13 +315,49 @@ function buildUserMessage(text: string, atts: Attachment[], plain: boolean, cwd:
   return msg
 }
 
+/** What the agent can use in Code mode. Plan mode swaps in read-only tools and propose_plan. */
+function codeTools(rt: Runtime, skills: boolean): Tool[] {
+  const all = [...TOOLS, taskTool, ...(skills ? [skillTool] : []), browserTool, ...mcp.tools()]
+  if (rt.permissions.mode !== 'plan') return all
+  return [...all.filter((t) => PLAN_TOOLS.has(t.spec.name) || (t.spec.name.startsWith('mcp__') && mcp.readOnly(t.spec.name))).map((t) => (t.spec.name === 'bash' ? readOnlyBash : t)), planTool]
+}
+
+/** The folder's hooks, if the user trusts them (asking once per version of the file), plus their own. */
+async function lifecycleHooks(rt: Runtime, ask: (name: string, preview: import('../tools/index.js').Preview) => Promise<'y' | 'n' | 'a'>): Promise<Hooks | undefined> {
+  const { session } = rt
+  const project = projectHooks(session.cwd)
+  let trusted = false
+  if (project && !rt.hooksDenied) {
+    const key = `${session.cwd}#${project.hash}`
+    trusted = !!cfg.trustedHooks?.includes(key)
+    if (!trusted) {
+      const answer = await ask('hooks', { kind: 'command', command: project.commands.join('\n') })
+      if (answer === 'n') rt.hooksDenied = true
+      else {
+        trusted = true
+        cfg = { ...cfg, trustedHooks: [...(cfg.trustedHooks ?? []).filter((k) => !k.startsWith(`${session.cwd}#`)), key] }
+        persist()
+      }
+    }
+  }
+  const set = Hooks.merge(globalHooks(), trusted && project ? project.hooks : {})
+  return Object.keys(set).length ? new Hooks(set, session.cwd, session.id) : undefined
+}
+
 function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[] = []) {
   const { session } = rt
   const messages = session.messages
   const before = messages.length
   const plain = session.kind === 'chat'
+  const turn = typedCount(messages)
   // "/init" sends the long research prompt; the chat only ever shows "/init".
-  messages.push(buildUserMessage(text, atts, plain, session.cwd))
+  const userMsg = buildUserMessage(text, atts, plain, session.cwd)
+  if (rt.note && userMsg.role === 'user') {
+    userMsg.display ??= userMsg.content
+    userMsg.content = `${rt.note}\n\n${userMsg.content}`
+    rt.note = undefined
+  }
+  messages.push(userMsg)
   const ac = (rt.abort = new AbortController())
   const t0 = Date.now()
   const active = activeProfile()
@@ -313,36 +366,65 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
   const userCtx: UserContext = { name: cfg.userName || undefined, memory: cfg.memory !== false ? loadMemory() : undefined, canRemember: plain && cfg.memory !== false && !demo }
   const identity = demo || !active ? undefined : { model: active[1].model, provider: active[0] }
 
+  const ask = (name: string, preview: import('../tools/index.js').Preview) =>
+    new Promise<'y' | 'n' | 'a'>((resolve) => {
+      const id = Math.random().toString(36).slice(2)
+      rt.pending = { id, resolve }
+      const summary = preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.kind === 'plan' ? 'Approve the plan' : preview.summary
+      notifyAway(chatId, session, `Needs your OK: ${summary}`)
+      emit({ chatId, type: 'confirm', id, name, summary, preview: toPreviewDto(preview) })
+    })
+
   const run = async () => {
     try {
       let profile = active?.[1]
       if (!demo && profile?.engine) profile = { ...profile, baseUrl: await ensureEngine(profile.engine, () => [...runtimes.values()].some((r) => r.abort)) }
       const provider = demo ? demoProvider() : createProvider(profile!)
       const window = demo || !profile ? undefined : contextWindow(profile.model, !!profile.engine)
+      const skills = plain ? [] : loadSkills(session.cwd)
+      const lifecycle = plain ? undefined : await lifecycleHooks(rt, ask)
+      if (lifecycle?.has('UserPromptSubmit')) {
+        const r = await lifecycle.promptSubmit(text)
+        if (r.block) throw new Error(`A UserPromptSubmit hook refused this message: ${r.block}`)
+        const m = messages[messages.length - 1]
+        if (r.context && m.role === 'user') {
+          m.display ??= m.content
+          m.content += `\n\n[Context from a hook]\n${r.context}`
+        }
+      }
       await runTurn({
         provider,
-        system: plain ? buildChatPrompt(new Date(), identity, userCtx) : buildSystemPrompt(session.cwd, new Date(), identity, userCtx),
+        system: plain ? buildChatPrompt(new Date(), identity, userCtx) : buildSystemPrompt(session.cwd, new Date(), identity, userCtx, { plan: rt.permissions.mode === 'plan', skills: skillsBlock(skills) }),
         messages,
         cwd: session.cwd,
         permissions: rt.permissions,
         signal: ac.signal,
         effort: cfg.effort,
-        tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : [...TOOLS, ...mcp.tools()],
+        tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : () => codeTools(rt, skills.length > 0),
         contextWindow: window,
+        beforeWrite: plain ? undefined : (abs) => rt.checkpoints.record(turn, session.cwd, abs),
+        lifecycle,
+        diagnostics: !plain && cfg.diagnostics !== false,
         hooks: {
           onThinking: () => emit({ chatId, type: 'thinking' }),
           onReasoning: (delta) => emit({ chatId, type: 'reasoning', delta }),
           onText: (delta) => emit({ chatId, type: 'text', delta }),
           onTextEnd: () => emit({ chatId, type: 'textEnd' }),
           onToolRunning: (name, summary) => emit({ chatId, type: 'toolRunning', name, summary }),
-          onToolDone: (name, summary, ok, result) => (name === 'remember' && pushState(), emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result) })),
-          confirm: (name, preview) =>
-            new Promise((resolve) => {
-              const id = Math.random().toString(36).slice(2)
-              rt.pending = { id, resolve }
-              notifyAway(chatId, session, `Needs your OK: ${preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary}`)
-              emit({ chatId, type: 'confirm', id, name, summary: preview.kind === 'diff' ? preview.path : preview.kind === 'command' ? preview.command : preview.summary, preview: toPreviewDto(preview) })
-            }),
+          onToolDone: (name, summary, ok, result, images) => {
+            if (name === 'remember') pushState()
+            const img = images?.[0]
+            emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result), image: img ? `data:${img.mime};base64,${img.data}` : undefined })
+          },
+          confirm: ask,
+          onPlanApproved: () => {
+            cfg = { ...cfg, permissionMode: 'auto' }
+            for (const r of runtimes.values()) r.permissions.mode = 'auto'
+            persist()
+            pushState()
+            emit({ chatId, type: 'planApproved' })
+          },
+          onNote: (text) => emit({ chatId, type: 'note', text }),
           onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
           onCompacted: () => emit({ chatId, type: 'compacted' }),
           onContext: (used) => {
@@ -364,6 +446,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
       rt.abort = undefined
       rt.pending = undefined
       touchEngine()
+      if (!plain) emit({ chatId, type: 'checkpoints', turns: rt.checkpoints.turnsWithChanges() })
       session.updatedAt = new Date().toISOString()
       if (!demo && messages.length) {
         saveSession(session)
@@ -445,17 +528,18 @@ function registerIpc() {
     // Reuse an empty chat instead of piling up blanks.
     for (const [id, rt] of runtimes) if ((rt.session.kind === 'chat') === (kind === 'chat') && rt.session.cwd === folder && !rt.session.messages.length) return id
     const session = newSession(folder, activeProfile()?.[0] ?? 'demo', kind)
-    runtimes.set(session.id, { session, permissions: newPermissions() })
+    runtimes.set(session.id, newRuntime(session))
     pushState()
     return session.id
   })
   ipcMain.handle('chat:open', (_e, id: string) => {
     const rt = runtime(id)
-    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages), context: rt.session.context } : null
+    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages), context: rt.session.context, checkpoints: rt.checkpoints.turnsWithChanges() } : null
   })
   ipcMain.handle('chat:delete', (_e, id: string) => {
     const rt = runtimes.get(id)
     if (rt) stopChat(rt)
+    ;(rt?.checkpoints ?? new Checkpoints(id)).remove()
     runtimes.delete(id)
     saved.delete(id)
     deleteSession(id)
@@ -471,12 +555,19 @@ function registerIpc() {
     startTurn(chatId, rt, text, Array.isArray(atts) ? atts : [])
     return { ok: true }
   })
-  ipcMain.handle('chat:rewind', (_e, chatId: string, ordinal: number) => {
+  ipcMain.handle('chat:rewind', (_e, chatId: string, ordinal: number, restoreFiles?: boolean) => {
     const rt = runtime(chatId)
     if (!rt) return { ok: false as const, error: 'That chat no longer exists.' }
     if (rt.abort) return { ok: false as const, error: 'Stop the current turn first.' }
     const m = rewindTo(rt.session.messages, ordinal)
     if (!m) return { ok: false as const, error: 'Could not find that message.' }
+    let restored: string[] = []
+    try {
+      if (restoreFiles && isDir(rt.session.cwd)) restored = rt.checkpoints.restore(ordinal, rt.session.cwd)
+      else rt.checkpoints.drop(ordinal)
+    } catch (e: any) {
+      return { ok: false as const, error: `Could not restore the files: ${e?.message ?? e}` }
+    }
     rt.session.updatedAt = new Date().toISOString()
     if (rt.session.messages.length && !demo) {
       saveSession(rt.session)
@@ -490,7 +581,32 @@ function registerIpc() {
       ...(m.images ?? []).map((i) => ({ name: i.name, kind: 'image' as const, mime: i.mime, dataUrl: `data:${i.mime};base64,${i.data}` })),
       ...(m.attached ?? []).map((f) => ({ name: f.name, kind: 'file' as const, text: f.text })),
     ]
-    return { ok: true as const, text: m.display ?? m.content, attachments }
+    return { ok: true as const, text: m.display ?? m.content, attachments, restored }
+  })
+  ipcMain.handle('chat:changed', (_e, chatId: string, ordinal: number) => runtime(chatId)?.checkpoints.changedFrom(Number(ordinal)) ?? [])
+  ipcMain.handle('chat:restore', (_e, chatId: string, ordinal: number) => {
+    const rt = runtime(chatId)
+    if (!rt) return { ok: false as const, error: 'That chat no longer exists.' }
+    if (rt.abort) return { ok: false as const, error: 'Stop the current turn first.' }
+    if (!isDir(rt.session.cwd)) return { ok: false as const, error: `The folder ${rt.session.cwd} no longer exists.` }
+    try {
+      const restored = rt.checkpoints.restore(Number(ordinal), rt.session.cwd)
+      if (restored.length) rt.note = `[Note from Croo: the user restored ${restored.join(', ')} to how ${restored.length === 1 ? 'it was' : 'they were'} before their message #${Number(ordinal) + 1}, undoing your later edits to ${restored.length === 1 ? 'it' : 'them'}. Read files again before relying on what they contained.]`
+      emit({ chatId, type: 'checkpoints', turns: rt.checkpoints.turnsWithChanges() })
+      return { ok: true as const, restored }
+    } catch (e: any) {
+      return { ok: false as const, error: `Could not restore the files: ${e?.message ?? e}` }
+    }
+  })
+  ipcMain.handle('commands:list', (_e, cwd: string) => {
+    const builtin = [{ name: 'init', description: 'Study this project and write AGENTS.md', source: 'builtin' as const }]
+    if (!workspaces.includes(cwd)) return builtin
+    return [...builtin, ...loadCommands(cwd).filter((c) => !BUILTIN_COMMANDS.includes(c.name)).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint, source: c.source }))]
+  })
+  ipcMain.handle('diagnostics:set', (_e, on: boolean) => {
+    cfg = { ...cfg, diagnostics: !!on }
+    persist()
+    pushState()
   })
   ipcMain.handle('attach:pick', async () => {
     if (!win) return { attachments: [], skipped: [] }
@@ -691,7 +807,7 @@ function registerIpc() {
     pushState()
   })
   ipcMain.handle('mode:set', (_e, mode: PermissionMode) => {
-    if (!['manual', 'auto', 'bypass'].includes(mode)) return
+    if (!['manual', 'auto', 'plan', 'bypass'].includes(mode)) return
     cfg = { ...cfg, permissionMode: mode }
     for (const rt of runtimes.values()) rt.permissions.mode = mode
     persist()
@@ -965,5 +1081,7 @@ else {
     terminals.killAll()
     runner.stopAll()
     mcp.stopAll()
+    killAllBackground()
+    closeAgentBrowser()
   })
 }

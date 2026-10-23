@@ -23,6 +23,7 @@
   --accent-soft: rgba(42, 154, 88, 0.1);
   --danger: #c9473c;
   --warn: #a8731f;
+  --plan: #4a6fb5;
   --warn-soft: rgba(168, 115, 31, 0.12);
   --add-bg: rgba(42, 154, 88, 0.1);
   --del-bg: rgba(201, 71, 60, 0.09);
@@ -60,6 +61,7 @@
     --accent-soft: rgba(92, 201, 131, 0.12);
     --danger: #ec6a5e;
     --warn: #ddb057;
+    --plan: #8eaee8;
     --warn-soft: rgba(221, 176, 87, 0.13);
     --add-bg: rgba(92, 201, 131, 0.12);
     --del-bg: rgba(236, 106, 94, 0.12);
@@ -826,6 +828,9 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
 .mode-bypass {
   color: var(--warn);
 }
+.mode-plan {
+  color: var(--plan);
+}
 .mode-menu {
   position: absolute;
   left: 22px;
@@ -864,6 +869,10 @@ html:not([data-platform='darwin']) #app.sidebar-hidden .show-when-hidden {
 }
 .mode-item.mode-bypass > .icon:first-child {
   color: var(--warn);
+}
+.mode-item.mode-plan > .icon:first-child,
+.opt.mode-plan .icon {
+  color: var(--plan);
 }
 .mode-item.mode-auto,
 .mode-item.mode-bypass {
@@ -2708,7 +2717,7 @@ button.inst:hover {
 }
 .opts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 .opt {
@@ -3869,4 +3878,115 @@ button.inst:hover {
 .queued-x:hover {
   background: var(--hover);
   color: var(--text);
+}
+
+/* ---------- checkpoints, plans, screenshots ---------- */
+
+.msg.user {
+  position: relative;
+}
+.restore-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 6;
+  width: 320px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: left;
+  animation: rise 0.12s ease-out;
+}
+.restore-pop b {
+  display: block;
+  font-weight: 600;
+}
+.restore-pop small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.restore-pop ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font: 12px/1.6 var(--mono);
+  color: var(--text-2);
+  max-height: 160px;
+  overflow: auto;
+}
+.restore-pop li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.restore-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.edit-undo-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.edit-undo-row input {
+  margin: 0;
+}
+.confirm.plan .confirm-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--plan);
+  vertical-align: 1px;
+}
+.plan-body {
+  max-height: 420px;
+  overflow: auto;
+  padding: 4px 16px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px;
+}
+.tool-shot {
+  display: block;
+  margin: 4px 0 8px 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-soft);
+  cursor: zoom-in;
+}
+.tool-shot img {
+  display: block;
+  width: 320px;
+  max-width: 100%;
+  height: auto;
+}
+.slash-menu {
+  max-height: 280px;
+  overflow: auto;
+}
+.slash-item {
+  background: transparent;
+}
+.slash-item.on {
+  background: var(--hover);
+}
+.slash-item span small {
+  color: var(--text-3);
+  font: 11.5px var(--mono);
+}
+.slash-src {
+  color: var(--text-3);
+  font-size: 11px;
 }

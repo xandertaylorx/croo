@@ -29,6 +29,8 @@ export interface ChatView {
   attachments?: Attachment[]
   /** How full the model's context was after the last request, for the ring in the header. */
   context?: { used: number; window: number }
+  /** Turns (0-based typed messages) whose file changes Croo can restore. */
+  checkpoints?: number[]
   /** Messages typed while the agent was busy; each is sent when the one before it finishes. */
   queue?: { text: string; atts: Attachment[] }[]
 }

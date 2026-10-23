@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.0
+
+- **Undo Croo's changes**: before Croo's file tools change a file, its previous content is saved. **Undo changes** next to Retry puts back everything the last turn changed, and the ↶ button on any of your messages restores the files to how they were before it, keeping the conversation. Editing and resending a message can undo the file changes since then too. Croo is told what was restored. Changes made by shell commands are not tracked
+- **Plan mode**: a fourth permission mode (`⇧Tab` cycles Manual → Auto → Plan → Bypass). Croo reads, searches and runs read-only commands, then shows a plan card. **Approve and start** switches to Auto and Croo carries the plan out; **Keep planning** lets you ask for changes. Nothing can be edited until you approve
+- **Croo checks its own work in a browser**: a new `browser` tool drives a real Chromium page, separate from your own sign-ins. Croo can open your dev server, read the page, click, type, scroll, read console errors and take screenshots it can look at. The screenshots show on the tool card (click to enlarge). Localhost pages open without asking; other sites ask first
+- **Background commands**: `bash` can start dev servers and watchers with `run_in_background`. `bash_output` reads what they print and `bash_kill` stops them. They are stopped when Croo quits
+- **Errors caught right after edits**: after Croo edits TypeScript, JavaScript, Python, JSON or Go files, it checks them with the project's own TypeScript compiler or a syntax check, and reports any errors back in the same step. A quiet "Checked" row shows the result. Turn this off in Settings → General → Checks
+- **Research subagents**: a new `task` tool hands broad research to a subagent with its own fresh context. Subagents can read, search and run read-only commands, but can't change anything. Several can run in parallel, and only their reports come back, so long investigations no longer fill up the chat's context
+- **Custom slash commands**: markdown files in `.croo/commands/` (or `.claude/commands/`, or `~/.config/croo/commands/` for every folder) become `/name` commands, with `$ARGUMENTS` filled in. Typing `/` lists them with their descriptions
+- **Skills**: folders with a `SKILL.md` in `.croo/skills/` (or `.claude/skills/`, or `~/.config/croo/skills/`) are listed for the agent by name and description. It loads the full instructions with the `skill` tool when a task calls for them
+- **Hooks**: shell commands in `.croo/hooks.json` or `~/.config/croo/hooks.json` run on `PreToolUse` (exit code 2 blocks the call), `PostToolUse` (exit code 2 reports back, e.g. lint output), `UserPromptSubmit` and `Stop` (exit code 2 keeps the agent working, e.g. until the tests pass). Claude Code's hooks format works too. A folder's hooks only run after you trust that exact file, and Croo asks again whenever it changes
+- Tool results can carry images for Claude, OpenAI, Gemini and OpenAI-compatible models; only the newest two screenshots are kept in the model's context
+
 ## 0.15.1
 
 - **ripgrep is bundled again**: the 0.15.0 build skipped ripgrep after a failed download, so search fell back to the slower built-in walker. The download now retries, and a release build fails rather than shipping without it

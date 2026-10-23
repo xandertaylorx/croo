@@ -27,6 +27,7 @@ npm test && git status
 | --- | --- |
 | **Manual** | Asks before everything |
 | **Auto** | Asks only when it matters |
+| **Plan** | Looks around, then asks you to approve a plan |
 | **Bypass** | Never asks |
 
 - [x] Read the project

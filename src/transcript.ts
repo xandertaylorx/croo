@@ -28,13 +28,19 @@ export function rewindTo(messages: Msg[], ordinal: number): UserMsg | null {
   let seen = -1
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]
-    if (m.role === 'user' && ++seen === ordinal) {
+    if (m.role === 'user' && !m.auto && ++seen === ordinal) {
       messages.length = i
       return m
     }
   }
   return null
 }
+
+/** How many messages the user has typed: the number the next one (its turn) gets. */
+export const typedCount = (messages: Msg[]) => messages.filter((m) => m.role === 'user' && !m.auto).length
+
+/** The note an automatic message is shown as. */
+const autoNote = (m: UserMsg) => m.display ?? 'Croo continued automatically'
 
 /** Turn saved model messages back into what the chat shows. */
 export function toItems(messages: Msg[]): Item[] {
@@ -44,7 +50,8 @@ export function toItems(messages: Msg[]): Item[] {
   const items: Item[] = []
   for (const m of messages) {
     if (m.summaryBefore) items.push({ kind: 'note', text: COMPACTED_NOTE })
-    if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m) })
+    if (m.role === 'user' && m.auto) items.push({ kind: 'note', text: autoNote(m) })
+    else if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m) })
     else if (m.role === 'assistant') {
       if (m.thinking?.trim()) items.push({ kind: 'thinking', text: m.thinking, done: true })
       if (m.content.trim()) items.push({ kind: 'assistant', text: m.content })
@@ -55,7 +62,8 @@ export function toItems(messages: Msg[]): Item[] {
         } catch {}
         const r = results.get(c.id)
         const status = !r ? 'error' : r.content.startsWith('The user denied') ? 'denied' : r.isError ? 'error' : 'ok'
-        items.push({ kind: 'tool', name: c.name, summary, status, result: r ? clip(r.content) : 'Cancelled.' })
+        const img = r?.images?.[0]
+        items.push({ kind: 'tool', name: c.name, summary, status, result: r ? clip(r.content) : 'Cancelled.', image: img ? `data:${img.mime};base64,${img.data}` : undefined })
       }
     }
   }
@@ -63,7 +71,7 @@ export function toItems(messages: Msg[]): Item[] {
 }
 
 export function toPreviewDto(p: Preview): PreviewDto {
-  if (p.kind !== 'diff') return p
+  if (p.kind !== 'diff') return p as PreviewDto
   const all = diffLines(p.before, p.after)
   const lines = collapseContext(all, 3)
   const added = all.filter((l) => l.type === '+').length

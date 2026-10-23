@@ -1,23 +1,34 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import type { ToolSpec } from '../types.js'
+import type { ImageAtt, ToolSpec } from '../types.js'
 import { applyEdit } from './edit.js'
 import { addMemory } from '../memory.js'
 import { Ignore, globMatcher, walk } from './ignore.js'
 import { RG_BASE, ripgrep, runRg } from './rg.js'
 import { fetchPage } from './web.js'
+import { bashKill, bashOutput, firstOutput, startBackground } from './background.js'
+import { classifyCommand } from '../permissions.js'
 
 export type Preview =
   | { kind: 'diff'; path: string; before: string; after: string }
   | { kind: 'command'; command: string }
   /** Shown only in manual mode, where even read-only tools ask. */
   | { kind: 'read'; tool: string; summary: string }
+  /** Plan mode: the plan the agent wants approved before it starts changing things. */
+  | { kind: 'plan'; plan: string }
 
 export interface ToolContext {
   cwd: string
   signal?: AbortSignal
+  /** Called with a file's absolute path just before a file tool changes it, so it can be checkpointed. */
+  beforeWrite?(abs: string): void
+  /** Run a research subagent with its own fresh context and return its final report. */
+  runSubagent?(prompt: string): Promise<string>
 }
+
+/** What a tool returns: text, or text with images (e.g. a browser screenshot) for models that can see. */
+export type ToolOutput = string | { text: string; images?: ImageAtt[] }
 
 export interface Tool {
   spec: ToolSpec
@@ -25,7 +36,9 @@ export interface Tool {
   summarize(args: any): string
   /** For tools that need approval: validate and describe the change. Throws on invalid input. */
   prepare?(args: any, ctx: ToolContext): Preview
-  run(args: any, ctx: ToolContext): Promise<string>
+  run(args: any, ctx: ToolContext): Promise<ToolOutput>
+  /** What the model is told when the user denies the call, if not the usual "do not retry". */
+  denied?: string
 }
 
 export const MAX_OUTPUT = 30000
@@ -108,6 +121,7 @@ const writeFile: Tool = {
   async run(a, ctx) {
     const abs = safePath(ctx.cwd, a.path)
     const existed = fs.existsSync(abs)
+    ctx.beforeWrite?.(abs)
     fs.mkdirSync(path.dirname(abs), { recursive: true })
     fs.writeFileSync(abs, a.content)
     return `${existed ? 'Overwrote' : 'Created'} ${relPath(ctx.cwd, abs)} (${a.content.split('\n').length} lines)`
@@ -133,7 +147,9 @@ const editFile: Tool = {
   },
   async run(a, ctx) {
     const abs = safePath(ctx.cwd, a.path)
-    fs.writeFileSync(abs, applyEdit(readText(abs), a.old_string, a.new_string, !!a.replace_all))
+    const after = applyEdit(readText(abs), a.old_string, a.new_string, !!a.replace_all)
+    ctx.beforeWrite?.(abs)
+    fs.writeFileSync(abs, after)
     return `Edited ${relPath(ctx.cwd, abs)}`
   },
 }
@@ -335,7 +351,9 @@ const multiEdit: Tool = {
   },
   async run(a, ctx) {
     const abs = safePath(ctx.cwd, a.path)
-    fs.writeFileSync(abs, applyEdits(readText(abs), a.edits))
+    const after = applyEdits(readText(abs), a.edits)
+    ctx.beforeWrite?.(abs)
+    fs.writeFileSync(abs, after)
     return `Edited ${relPath(ctx.cwd, abs)} (${a.edits.length} edits)`
   },
 }
@@ -405,17 +423,22 @@ const todoWrite: Tool = {
 const bash: Tool = {
   spec: {
     name: 'bash',
-    description: 'Run a shell command in the working directory (each call starts a fresh shell there). Use it for builds, tests, git and package managers; use read_file, list_files and grep rather than cat, find or grep. Chain dependent commands with &&. Default timeout 120s (max 600000 ms); long output is truncated in the middle.',
-    parameters: { type: 'object', properties: { command: str(), timeout_ms: str('integer', 'Timeout in ms (max 600000)') }, required: ['command'] },
+    description: 'Run a shell command in the working directory (each call starts a fresh shell there). Use it for builds, tests, git and package managers; use read_file, list_files and grep rather than cat, find or grep. Chain dependent commands with &&. Default timeout 120s (max 600000 ms); long output is truncated in the middle. For dev servers, watchers and anything that keeps running, set run_in_background: it returns an id at once, and bash_output reads what it prints.',
+    parameters: {
+      type: 'object',
+      properties: { command: str(), timeout_ms: str('integer', 'Timeout in ms (max 600000)'), run_in_background: str('boolean', 'Start it and return right away (for servers and watchers)') },
+      required: ['command'],
+    },
   },
-  summarize: (a) => String(a.command ?? '').split('\n')[0],
+  summarize: (a) => String(a.command ?? '').split('\n')[0] + (a.run_in_background ? ' &' : ''),
   prepare(a) {
     if (typeof a.command !== 'string' || !a.command.trim()) throw new Error('command is required.')
-    return { kind: 'command', command: a.command }
+    return { kind: 'command', command: a.run_in_background ? `${a.command}  # in the background` : a.command }
   },
-  run(a, ctx) {
+  async run(a, ctx) {
+    if (a.run_in_background) return firstOutput(startBackground(String(a.command), ctx.cwd))
     const timeout = Math.min(Math.max(Number(a.timeout_ms) || 120_000, 1000), 600_000)
-    return new Promise((resolve) => {
+    return new Promise<string>((resolve) => {
       const child = spawn(a.command, { shell: true, cwd: ctx.cwd, detached: process.platform !== 'win32', env: process.env })
       let out = ''
       let note = ''
@@ -452,6 +475,20 @@ const bash: Tool = {
   },
 }
 
+/** bash for plan mode and subagents: only commands that cannot change anything run. */
+export const readOnlyBash: Tool = {
+  ...bash,
+  spec: {
+    ...bash.spec,
+    description: 'Run a read-only shell command in the working directory: git status/log/diff/show, ls, wc, tests and type checks. Commands that could change files, install things or start servers are refused here.',
+    parameters: { type: 'object', properties: { command: str(), timeout_ms: str('integer', 'Timeout in ms (max 600000)') }, required: ['command'] },
+  },
+  async run(a, ctx) {
+    if (classifyCommand(String(a.command ?? '')) !== 'safe') return 'Refused: only read-only commands can run here (no changes, installs, servers or redirects). Note it in your report or plan instead.'
+    return bash.run({ ...a, run_in_background: false }, ctx)
+  },
+}
+
 /** Chat mode only: save one fact about the user to memory.md. */
 export const rememberTool: Tool = {
   spec: {
@@ -465,7 +502,7 @@ export const rememberTool: Tool = {
   },
 }
 
-export const TOOLS: Tool[] = [readFile, writeFile, editFile, multiEdit, listFiles, grep, bash, webFetch, todoWrite]
+export const TOOLS: Tool[] = [readFile, writeFile, editFile, multiEdit, listFiles, grep, bash, bashOutput, bashKill, webFetch, todoWrite]
 let extraTools: () => Tool[] = () => []
 /** Tools that come from elsewhere (MCP servers), so the chat can describe their calls too. */
 export const setExtraTools = (fn: () => Tool[]) => void (extraTools = fn)

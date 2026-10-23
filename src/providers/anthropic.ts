@@ -19,7 +19,8 @@ export function toAnthropicMessages(messages: Msg[]) {
       for (const c of m.toolCalls ?? []) blocks.push({ type: 'tool_use', id: c.id, name: c.name, input: c.args })
       out.push({ role: 'assistant', content: blocks })
     } else {
-      const block = { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content, is_error: m.isError || undefined }
+      const content = m.images?.length ? [{ type: 'text', text: m.content }, ...m.images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } }))] : m.content
+      const block = { type: 'tool_result', tool_use_id: m.toolCallId, content, is_error: m.isError || undefined }
       const last = out[out.length - 1]
       // Consecutive tool results must share one user message.
       if (last?.role === 'user' && Array.isArray(last.content)) last.content.push(block)

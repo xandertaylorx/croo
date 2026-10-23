@@ -11,6 +11,7 @@ export type PreviewDto =
   | { kind: 'diff'; path: string; lines: (DiffLine | null)[]; added: number; removed: number; more: number }
   | { kind: 'command'; command: string }
   | { kind: 'read'; tool: string; summary: string }
+  | { kind: 'plan'; plan: string }
 
 /** What a chat shows. `confirm` only ever exists live, never in a saved transcript. */
 export interface AttachmentView {
@@ -26,7 +27,7 @@ export type Item =
   | { kind: 'user'; text: string; attachments?: AttachmentView[] }
   | { kind: 'assistant'; text: string; streaming?: boolean }
   | { kind: 'thinking'; text: string; done: boolean; seconds?: number }
-  | { kind: 'tool'; name: string; summary: string; status: ToolStatus; result?: string }
+  | { kind: 'tool'; name: string; summary: string; status: ToolStatus; result?: string; /** A screenshot the tool took, as a data: URL. */ image?: string }
   | { kind: 'confirm'; id: string; name: string; summary: string; preview: PreviewDto }
   | { kind: 'error'; text: string }
   /** A quiet line in the thread, e.g. "Summarized earlier messages to free up context". */
@@ -41,7 +42,12 @@ export type ChatEvent = { chatId: string } & (
   | { type: 'text'; delta: string }
   | { type: 'textEnd' }
   | { type: 'toolRunning'; name: string; summary: string }
-  | { type: 'toolDone'; name: string; summary: string; ok: boolean; result: string }
+  | { type: 'toolDone'; name: string; summary: string; ok: boolean; result: string; image?: string }
+  | { type: 'note'; text: string }
+  /** Which turns (0-based typed messages) have file changes that can be restored. */
+  | { type: 'checkpoints'; turns: number[] }
+  /** Plan mode ended because the user approved the plan. */
+  | { type: 'planApproved' }
   | { type: 'confirm'; id: string; name: string; summary: string; preview: PreviewDto }
   | { type: 'done'; seconds: number }
   | { type: 'cancelled' }
@@ -219,6 +225,7 @@ export interface AppState {
   effort: Effort
   notify: boolean
   memory: boolean
+  diagnostics: boolean
   memoryEntries: { date: string; text: string }[]
   userName: string
   /** Small image data URL, or empty. */
@@ -246,6 +253,14 @@ export interface AddProfileRequest {
 
 export type Result = { ok: true } | { ok: false; error: string }
 
+/** A custom slash command, for the menu that opens when you type "/". */
+export interface SlashCommand {
+  name: string
+  description: string
+  argumentHint?: string
+  source: 'builtin' | 'project' | 'global'
+}
+
 export type Command = 'newChat' | 'addFolder' | 'settings' | 'toggleSidebar' | 'toggleTerminal' | 'toggleFiles' | 'toggleBrowser' | 'toggleGit' | 'search' | 'modeChat' | 'modeCode'
 
 export interface CrooApi {
@@ -253,11 +268,18 @@ export interface CrooApi {
   addWorkspace(): Promise<void>
   removeWorkspace(path: string): Promise<void>
   newChat(cwd: string, kind: ChatKind): Promise<string>
-  openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[]; context?: ContextInfo } | null>
+  openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[]; context?: ContextInfo; checkpoints: number[] } | null>
   deleteChat(id: string): Promise<void>
   send(chatId: string, text: string, attachments?: Attachment[]): Promise<Result>
-  /** Cut the chat back to before the n-th user message (0-based) so it can be edited or sent again. */
-  rewind(chatId: string, ordinal: number): Promise<{ ok: true; text: string; attachments: Attachment[] } | { ok: false; error: string }>
+  /** Cut the chat back to before the n-th user message (0-based) so it can be edited or sent again; optionally undo file changes since. */
+  rewind(chatId: string, ordinal: number, restoreFiles?: boolean): Promise<{ ok: true; text: string; attachments: Attachment[]; restored: string[] } | { ok: false; error: string }>
+  /** Put the files Croo changed from the n-th user message on back the way they were. The conversation stays. */
+  restore(chatId: string, ordinal: number): Promise<{ ok: true; restored: string[] } | { ok: false; error: string }>
+  /** Files Croo changed from the n-th user message on, which restoring would put back. */
+  changedFiles(chatId: string, ordinal: number): Promise<string[]>
+  /** Custom slash commands for this folder (and the built-in ones). */
+  listCommands(cwd: string): Promise<SlashCommand[]>
+  setDiagnostics(on: boolean): Promise<void>
   pickAttachments(): Promise<{ attachments: Attachment[]; skipped: string[] }>
   onAttach(cb: (a: Attachment[], skipped: string[]) => void): void
   searchFiles(cwd: string, query: string): Promise<string[]>

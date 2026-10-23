@@ -1,7 +1,11 @@
 import type { PermissionMode } from './types.js'
+import { isLocalUrl } from './config.js'
 
 /** Read-only tools never change anything. */
-export const READ_ONLY_TOOLS = new Set(['read_file', 'list_files', 'grep', 'todo_write'])
+export const READ_ONLY_TOOLS = new Set(['read_file', 'list_files', 'grep', 'todo_write', 'bash_output', 'task', 'skill'])
+
+/** What plan mode offers: looking around, never changing anything, and propose_plan to ask for the go-ahead. */
+export const PLAN_TOOLS = new Set(['read_file', 'list_files', 'grep', 'todo_write', 'bash', 'bash_output', 'web_fetch', 'browser', 'task', 'skill', 'propose_plan'])
 
 const SAFE_BINS = new Set([
   'ls', 'pwd', 'cd', 'cat', 'head', 'tail', 'wc', 'echo', 'printf', 'grep', 'rg', 'find', 'tree', 'which', 'whoami',
@@ -59,16 +63,22 @@ export class Permissions {
   /**
    * manual: everything asks, reads included.
    * auto:   reads, edits inside the folder and safe commands run; other commands and web fetches ask.
+   * plan:   only read-only tools are offered (bash refuses anything unsafe); the plan itself asks.
    * bypass: nothing asks.
    */
-  needsApproval(tool: string, args?: { command?: unknown }): boolean {
+  needsApproval(tool: string, args?: Record<string, unknown>): boolean {
+    // Approving the plan is the point of propose_plan, so it always asks.
+    if (tool === 'propose_plan') return true
     if (tool === 'remember' || tool === 'todo_write' || this.mode === 'bypass') return false
     if (this.mode === 'manual') return true
     if (this.isReadOnly(tool) || this.always.has(tool)) return false
-    if (tool === 'bash') return classifyCommand(String(args?.command ?? '')) !== 'safe'
+    if (tool === 'bash') return this.mode !== 'plan' && classifyCommand(String(args?.command ?? '')) !== 'safe'
+    if (tool === 'bash_kill') return false
+    // Local pages are the user's own dev servers; anything else leaves the machine.
+    if (tool === 'browser') return args?.action === 'navigate' && !isLocalUrl(String(args?.url ?? ''))
     // A request leaves the machine, and a URL can carry data out of the project: ask until allowed.
     if (tool === 'web_fetch' || tool.startsWith('mcp__')) return true
-    return false // file tools can only touch the working folder
+    return this.mode === 'plan' // file tools can only touch the working folder (and are not offered in plan mode)
   }
 
   allowAlways(tool: string) {

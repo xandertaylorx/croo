@@ -238,6 +238,6 @@ describe('tools', () => {
     expect(p.needsApproval('todo_write')).toBe(false)
     p.allowAlways('web_fetch')
     expect(p.needsApproval('web_fetch')).toBe(false)
-    expect(TOOLS.map((t) => t.spec.name)).toEqual(['read_file', 'write_file', 'edit_file', 'multi_edit', 'list_files', 'grep', 'bash', 'web_fetch', 'todo_write'])
+    expect(TOOLS.map((t) => t.spec.name)).toEqual(['read_file', 'write_file', 'edit_file', 'multi_edit', 'list_files', 'grep', 'bash', 'bash_output', 'bash_kill', 'web_fetch', 'todo_write'])
   })
 })
