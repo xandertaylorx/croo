@@ -1,5 +1,7 @@
-// Draws the app icon (build/icon.png) from the frog's pixel grid. No dependencies.
+// Draws the app icons from the frog's pixel grid. No dependencies.
 //   node scripts/make-icon.mjs
+// Three variants, only the colours differ: green on black (the default, build/icon.png), white on black and
+// black on white. The user picks one in Settings, Appearance.
 import fs from 'node:fs'
 import zlib from 'node:zlib'
 
@@ -15,12 +17,17 @@ const FROG = [
   '.GGGGGGGGGGGGG.',
   '..GG.......GG..',
 ]
-const COLORS = { G: [94, 214, 126] }
+const VARIANTS = {
+  'icon.png': { bg: [0, 0, 0], frog: [94, 214, 126] },
+  'icon-white.png': { bg: [0, 0, 0], frog: [255, 255, 255] },
+  'icon-light.png': { bg: [255, 255, 255], frog: [0, 0, 0] },
+}
 
 const margin = 0.1 // macOS icons leave breathing room around the squircle
 const body = SIZE * (1 - 2 * margin)
 const radius = body * 0.225
-const px = (body * 0.78) / FROG[0].length
+// The frog fills about 60% of the tile.
+const px = (body * 0.6) / FROG[0].length
 const fx = (SIZE - px * FROG[0].length) / 2
 const fy = (SIZE - px * FROG.length) / 2 + px * 0.2
 
@@ -32,23 +39,24 @@ function sdf(x, y) {
   return Math.hypot(dx, dy) - radius
 }
 
-const raw = Buffer.alloc((SIZE * 4 + 1) * SIZE)
-for (let y = 0; y < SIZE; y++) {
-  raw[y * (SIZE * 4 + 1)] = 0
-  for (let x = 0; x < SIZE; x++) {
-    const o = y * (SIZE * 4 + 1) + 1 + x * 4
-    const cover = Math.min(Math.max(0.5 - sdf(x + 0.5, y + 0.5), 0), 1)
-    const t = y / SIZE
-    let rgb = [Math.round(30 - 12 * t), Math.round(52 - 18 * t), Math.round(38 - 14 * t)]
-    const gx = Math.floor((x - fx) / px)
-    const gy = Math.floor((y - fy) / px)
-    const cell = FROG[gy]?.[gx]
-    if (gx >= 0 && cell && cell !== '.') rgb = COLORS[cell]
-    raw[o] = rgb[0]
-    raw[o + 1] = rgb[1]
-    raw[o + 2] = rgb[2]
-    raw[o + 3] = Math.round(cover * 255)
+function draw({ bg, frog }) {
+  const raw = Buffer.alloc((SIZE * 4 + 1) * SIZE)
+  for (let y = 0; y < SIZE; y++) {
+    raw[y * (SIZE * 4 + 1)] = 0
+    for (let x = 0; x < SIZE; x++) {
+      const o = y * (SIZE * 4 + 1) + 1 + x * 4
+      const cover = Math.min(Math.max(0.5 - sdf(x + 0.5, y + 0.5), 0), 1)
+      const gx = Math.floor((x - fx) / px)
+      const gy = Math.floor((y - fy) / px)
+      const cell = FROG[gy]?.[gx]
+      const rgb = gx >= 0 && cell && cell !== '.' ? frog : bg
+      raw[o] = rgb[0]
+      raw[o + 1] = rgb[1]
+      raw[o + 2] = rgb[2]
+      raw[o + 3] = Math.round(cover * 255)
+    }
   }
+  return raw
 }
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -76,8 +84,8 @@ ihdr[8] = 8 // bit depth
 ihdr[9] = 6 // RGBA
 
 fs.mkdirSync('build', { recursive: true })
-fs.writeFileSync(
-  'build/icon.png',
-  Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]),
-)
-console.log('wrote build/icon.png')
+for (const [name, colours] of Object.entries(VARIANTS)) {
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(draw(colours), { level: 9 })), chunk('IEND', Buffer.alloc(0))])
+  fs.writeFileSync(`build/${name}`, png)
+  console.log(`wrote build/${name}`)
+}

@@ -19,6 +19,9 @@ function copyStatic() {
   fs.mkdirSync('dist/renderer/fonts', { recursive: true })
   for (const f of fs.readdirSync('node_modules/katex/dist/fonts')) if (f.endsWith('.woff2')) fs.copyFileSync(`node_modules/katex/dist/fonts/${f}`, `dist/renderer/fonts/${f}`)
   fs.copyFileSync('node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-800-normal.woff2', 'dist/renderer/fonts/plus-jakarta-sans-800.woff2')
+  // The app icons, shown in Settings → Appearance.
+  fs.mkdirSync('dist/renderer/icons', { recursive: true })
+  for (const f of fs.readdirSync('build')) if (/^icon.*\.png$/.test(f)) fs.copyFileSync(`build/${f}`, `dist/renderer/icons/${f}`)
   for (const f of ['index.html', 'styles.css']) fs.copyFileSync(`src/renderer/${f}`, `dist/renderer/${f}`)
 }
 

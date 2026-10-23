@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0
+
+- **New app icon**: the green frog, a little smaller, on a solid black tile
+- **Choose your icon**: Settings has a new Appearance tab with three icons, the same frog in green on black (the default), white on black, and black on white. The one you pick becomes your Dock icon
+- **Appearance has its own tab**: colours, mode and font moved out of General
+
 ## 0.22.0
 
 - **Use your subscription**: connect a Claude (Pro/Max/Team) or ChatGPT (Plus/Pro) plan with no API key. Croo runs the `claude` or `codex` CLI you already signed in to, shows its tool calls as normal cards, keeps the conversation going between messages, and warns you when you near your plan's usage limit. Settings shows whether the CLI is installed and signed in

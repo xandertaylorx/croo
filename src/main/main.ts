@@ -22,6 +22,7 @@ import { favicon, tile } from './favicon.js'
 import { McpManager, parseMcpJson } from '../mcp.js'
 import { setRipgrepDir } from '../tools/rg.js'
 import { contextWindow } from '../compact.js'
+import { iconFile, isAppIcon } from '../appicon.js'
 import { SUBSCRIPTIONS, defaultModel, detect, isSubscription, modelEfforts, modelWindow, runExternal } from '../subscriptions/index.js'
 import { demoProvider } from '../providers/demo.js'
 import { fixPath } from './shellenv.js'
@@ -180,6 +181,7 @@ function buildState(): AppState {
     permissionMode: cfg.permissionMode,
     effort: cfg.effort,
     notify: cfg.notify,
+    appIcon: isAppIcon(cfg.appIcon) ? cfg.appIcon : 'green',
     memory: cfg.memory !== false,
     diagnostics: cfg.diagnostics !== false,
     mcpServers: [...mcp.servers.values()].map((s) => ({
@@ -547,6 +549,13 @@ async function addProfile(req: AddProfileRequest): Promise<Result> {
 
 // ---------- IPC ----------
 
+/** The Dock shows the icon picked in Settings. (Finder and the app switcher keep showing the default one until a new build.) */
+function applyDockIcon() {
+  if (!isMac) return
+  const icon = path.join(here, '..', '..', 'build', iconFile(cfg.appIcon))
+  if (fs.existsSync(icon)) app.dock?.setIcon(icon)
+}
+
 function registerIpc() {
   ipcMain.handle('state:get', () => buildState())
 
@@ -717,6 +726,13 @@ function registerIpc() {
   // Light or dark for the whole window, including the system chrome and prefers-color-scheme in the page.
   ipcMain.handle('theme:mode', (_e, mode: string) => {
     nativeTheme.themeSource = mode === 'light' || mode === 'dark' ? mode : 'system'
+  })
+  ipcMain.handle('appicon:set', (_e, id: unknown) => {
+    if (!isAppIcon(id)) return
+    cfg = { ...cfg, appIcon: id }
+    persist()
+    applyDockIcon()
+    pushState()
   })
   ipcMain.handle('notify:set', (_e, on: boolean) => {
     cfg = { ...cfg, notify: !!on }
@@ -1099,8 +1115,7 @@ else {
     registerIpc()
     buildMenu()
     if (isMac) {
-      const icon = path.join(here, '..', '..', 'build', 'icon.png')
-      if (fs.existsSync(icon)) app.dock?.setIcon(icon)
+      applyDockIcon()
     }
     createWindow()
     // Look for a newer release shortly after launch and then every few hours.

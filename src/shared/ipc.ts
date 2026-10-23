@@ -250,6 +250,7 @@ export interface AppState {
   permissionMode: PermissionMode
   effort: Effort
   notify: boolean
+  appIcon: 'green' | 'white' | 'black'
   memory: boolean
   diagnostics: boolean
   memoryEntries: { date: string; text: string }[]
@@ -321,6 +322,7 @@ export interface CrooApi {
   searchFiles(cwd: string, query: string): Promise<string[]>
   searchChats(query: string): Promise<import('../chatsearch.js').ChatHit[]>
   setNotify(on: boolean): Promise<void>
+  setAppIcon(id: 'green' | 'white' | 'black'): Promise<void>
   setThemeMode(mode: 'system' | 'light' | 'dark'): Promise<void>
   setPrice(profile: string, input?: number, output?: number): Promise<void>
   /** Download the update, replace this app and relaunch. Resolves only on failure (on success the app quits). */

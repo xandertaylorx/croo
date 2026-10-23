@@ -114,6 +114,8 @@ export interface McpServerConfig {
 export type PermissionMode = 'manual' | 'auto' | 'plan' | 'bypass'
 
 export interface Config {
+  /** Which app icon the Dock shows: green (default), white or black. */
+  appIcon?: import('./appicon.js').AppIconId
   activeProfile: string
   profiles: Record<string, Profile>
   pet: boolean

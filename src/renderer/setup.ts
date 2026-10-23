@@ -1,5 +1,6 @@
 import { PRESETS, type Preset } from '../providers/presets.js'
 import { SUBSCRIPTIONS } from '../subscriptions/info.js'
+import { APP_ICONS } from '../appicon.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
 import type { AppState, McpServerInfo, PermissionMode } from '../shared/ipc.js'
@@ -212,7 +213,7 @@ function keyForm(name: string, close: () => void): HTMLElement {
   )
 }
 
-type Pane = 'providers' | 'general' | 'mcp' | 'memory' | 'about'
+type Pane = 'providers' | 'general' | 'appearance' | 'mcp' | 'memory' | 'about'
 let pane: Pane = 'providers'
 
 const MODE_OPTIONS: { id: PermissionMode; label: string; icon: IconName; desc: string }[] = [
@@ -456,9 +457,6 @@ export function openSettings() {
     const row = (title: string, sub: string | null, control: HTMLElement) => h('div', { class: 'setting' }, h('div', { class: 'setting-text' }, h('b', null, title), sub ? h('small', null, sub) : null), control)
     return [
       head('General', 'Defaults for every chat.'),
-      h('div', { class: 'section-label' }, 'Appearance'),
-      palettePicker(),
-      h('div', { class: 'group' }, row('Mode', 'Follow your Mac, or stay light or dark.', modeControl()), row('Font', 'The typeface for Croo’s text. Code stays monospaced.', fontSelect())),
       h('div', { class: 'section-label' }, 'Profile'),
       profileRow(),
       h('div', { class: 'section-label' }, 'Permissions'),
@@ -487,6 +485,34 @@ export function openSettings() {
       voiceRow(),
     ]
   }
+
+  const appearancePane = () => {
+    const row = (title: string, sub: string | null, control: HTMLElement) => h('div', { class: 'setting' }, h('div', { class: 'setting-text' }, h('b', null, title), sub ? h('small', null, sub) : null), control)
+    return [
+      head('Appearance', 'How Croo looks.'),
+      h('div', { class: 'section-label' }, 'App icon'),
+      iconPicker(),
+      h('p', { class: 'muted' }, 'Changes the icon in your Dock while Croo is open.'),
+      h('div', { class: 'section-label' }, 'Colours'),
+      palettePicker(),
+      h('div', { class: 'group' }, row('Mode', 'Follow your Mac, or stay light or dark.', modeControl()), row('Font', 'The typeface for Croo’s text. Code stays monospaced.', fontSelect())),
+    ]
+  }
+
+  /** Three icons, the same frog in different colours; the one picked becomes the Dock icon. */
+  const iconPicker = () =>
+    h(
+      'div',
+      { class: 'app-icons', role: 'radiogroup', 'aria-label': 'App icon' },
+      APP_ICONS.map((i) =>
+        h(
+          'button',
+          { class: `app-icon ${store.state.appIcon === i.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': store.state.appIcon === i.id, onClick: () => void croo.setAppIcon(i.id) },
+          h('img', { src: `icons/${i.file}`, alt: '', width: 72, height: 72, draggable: 'false' }),
+          h('small', null, i.label),
+        ),
+      ),
+    )
 
   const palettePicker = () => {
     const row = h('div', { class: 'palettes', role: 'radiogroup', 'aria-label': 'Colour palette' })
@@ -575,14 +601,14 @@ export function openSettings() {
 
   const paint = () => {
     redraw = paint
-    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['mcp', 'MCP', 'plug'], ['memory', 'Memory', 'sparkle'], ['about', 'About', 'file']]
+    const tabs: [Pane, string, IconName][] = [['providers', 'Providers', 'key'], ['general', 'General', 'gear'], ['appearance', 'Appearance', 'sparkle'], ['mcp', 'MCP', 'plug'], ['memory', 'Memory', 'sparkle'], ['about', 'About', 'file']]
     nav.replaceChildren(
       h('div', { class: 'settings-title' }, 'Settings'),
       ...tabs.map(([id, label, ic]) => h('button', { class: `nav-btn ${pane === id ? 'on' : ''}`, type: 'button', 'aria-current': pane === id ? 'page' : undefined, onClick: () => ((pane = id), paint()) }, icon(ic, 16), label)),
       h('span', { class: 'push-down' }),
       h('div', { class: 'settings-ver' }, `Croo ${store.state.version}`),
     )
-    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : pane === 'mcp' ? mcpPane() : pane === 'memory' ? memoryPane() : aboutPane()))
+    content.replaceChildren(...(pane === 'providers' ? providersPane() : pane === 'general' ? generalPane() : pane === 'appearance' ? appearancePane() : pane === 'mcp' ? mcpPane() : pane === 'memory' ? memoryPane() : aboutPane()))
   }
 
   const addProvider = () => {
