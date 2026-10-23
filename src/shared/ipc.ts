@@ -26,7 +26,7 @@ export interface AttachmentView {
 export type Item =
   | { kind: 'user'; text: string; attachments?: AttachmentView[] }
   /** `meta` is the model and cost of the turn this reply ended, shown quietly under it. */
-  | { kind: 'assistant'; text: string; streaming?: boolean; meta?: string }
+  | { kind: 'assistant'; text: string; streaming?: boolean; meta?: string; /** Pages Croo read to write this reply. */ sources?: string[] }
   | { kind: 'thinking'; text: string; done: boolean; seconds?: number }
   | { kind: 'tool'; name: string; summary: string; status: ToolStatus; result?: string; /** A screenshot the tool took, as a data: URL. */ image?: string }
   | { kind: 'confirm'; id: string; name: string; summary: string; preview: PreviewDto }
@@ -331,6 +331,8 @@ export interface CrooApi {
   fsRead(cwd: string, rel: string): Promise<FsFile | null>
   reveal(cwd: string, rel: string): Promise<void>
   openExternal(url: string): Promise<void>
+  /** A site's own icon as a data: URL, or null when it has none the chip can use. */
+  favicon(host: string): Promise<string | null>
   /** Local dev servers that are currently listening. */
   probePorts(): Promise<number[]>
   gitStatus(cwd: string): Promise<GitStatus>

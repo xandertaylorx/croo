@@ -119,6 +119,7 @@ function renderItem(item: Item): HTMLElement {
         'div',
         { class: 'msg assistant' },
         h('div', { class: 'md', html: renderMarkdown(item.text) }),
+        sourcesRow(item),
         h('div', { class: 'msg-foot' }, h('button', { class: 'icon-btn small copy-reply', type: 'button', title: 'Copy reply', onClick: (e: Event) => copyReply(e.currentTarget as HTMLElement, item.text) }, icon('copy', 13)), item.meta ? h('span', { class: 'msg-meta' }, item.meta) : null),
       )
     case 'thinking':
@@ -353,18 +354,50 @@ function endThinking(v: ChatView) {
   }
 }
 
-/** A fetched page as a small chip: a coloured initial, the site, and the rest of the address dimmed. */
-function sourceChip(url: string): HTMLElement {
-  let host = url
-  let rest = ''
-  try {
-    const u = new URL(url)
-    host = u.hostname.replace(/^www\./, '')
-    rest = (u.pathname + u.search).replace(/^\/$/, '')
-  } catch {}
+const icons = new Map<string, string | null>()
+
+/** The mark at the start of a chip: the site's own icon once it arrives, a coloured initial until then (or when it has none). */
+function siteMark(host: string): HTMLElement {
   let hue = 0
   for (const ch of host) hue = (hue * 31 + ch.charCodeAt(0)) % 360
-  return h('span', { class: 'src-chip', title: url }, h('span', { class: 'src-mark', style: `--hue:${hue}` }, host.charAt(0).toUpperCase()), h('b', null, host), rest ? h('small', null, rest) : null)
+  const mark = h('span', { class: 'src-mark', style: `--hue:${hue}` }, host.charAt(0).toUpperCase())
+  const show = (src: string | null) => src && mark.replaceChildren(h('img', { src, alt: '', onError: () => mark.replaceChildren(host.charAt(0).toUpperCase()) }))
+  if (icons.has(host)) show(icons.get(host)!)
+  else void croo.favicon(host).then((src) => (icons.set(host, src), show(src)))
+  return mark
+}
+
+function parseSource(url: string): { host: string; rest: string } {
+  try {
+    const u = new URL(url)
+    return { host: u.hostname.replace(/^www\./, ''), rest: (u.pathname + u.search).replace(/^\/$/, '') }
+  } catch {
+    return { host: url, rest: '' }
+  }
+}
+
+/** A fetched page as a small chip: the site's icon, its name, and the rest of the address dimmed. */
+function sourceChip(url: string, link = false): HTMLElement {
+  const { host, rest } = parseSource(url)
+  const kids = [siteMark(host), h('b', null, host), rest ? h('small', null, rest) : null]
+  return link ? h('a', { class: 'src-chip link', href: url, target: '_blank', rel: 'noreferrer', title: url }, ...kids) : h('span', { class: 'src-chip', title: url }, ...kids)
+}
+
+const SOURCES_SHOWN = 4
+
+/** The pages a reply was written from, under it: a few chips, the rest behind "+N". */
+function sourcesRow(item: Extract<Item, { kind: 'assistant' }>): HTMLElement | null {
+  const urls = item.sources ?? []
+  if (!urls.length) return null
+  const all = open.has(item)
+  const shown = all ? urls : urls.slice(0, SOURCES_SHOWN)
+  return h(
+    'div',
+    { class: 'sources' },
+    h('span', { class: 'sources-label' }, urls.length === 1 ? 'Source' : `${urls.length} sources`),
+    ...shown.map((u) => sourceChip(u, true)),
+    urls.length > SOURCES_SHOWN ? h('button', { class: 'src-more', type: 'button', onClick: () => (open.has(item) ? open.delete(item) : open.add(item), touch(item)) }, all ? 'Show less' : `+${urls.length - SOURCES_SHOWN}`) : null,
+  )
 }
 
 /** Put the model, time and cost of the turn under its last reply. */
@@ -373,6 +406,8 @@ function stampReply(v: ChatView, seconds: number) {
   const reply = [...v.items].slice(lastUser + 1).reverse().find((i): i is Extract<Item, { kind: 'assistant' }> => i.kind === 'assistant')
   if (!reply) return
   const model = store.state.profiles.find((p) => p.active)?.model
+  const urls = v.items.slice(lastUser + 1).flatMap((i) => (i.kind === 'tool' && i.name === 'web_fetch' && i.status === 'ok' ? [i.summary] : []))
+  if (urls.length) reply.sources = [...new Set(urls)]
   reply.meta = [model, seconds >= 1 ? `${seconds.toFixed(1)}s` : '', metaText(v)].filter(Boolean).join(' · ')
   if (m?.view === v) touch(reply)
 }

@@ -17,7 +17,8 @@ import { planTool, skillTool, taskTool } from '../tools/meta.js'
 import { killAllBackground } from '../tools/background.js'
 import { browserTool, closeAgentBrowser } from './agentbrowser.js'
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
-import { TOOLS, readOnlyBash, rememberTool, setExtraTools, type Tool } from '../tools/index.js'
+import { TOOLS, readOnlyBash, rememberTool, setExtraTools, webFetch, type Tool } from '../tools/index.js'
+import { favicon } from './favicon.js'
 import { McpManager, parseMcpJson } from '../mcp.js'
 import { setRipgrepDir } from '../tools/rg.js'
 import { contextWindow } from '../compact.js'
@@ -400,7 +401,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
         permissions: rt.permissions,
         signal: ac.signal,
         effort: cfg.effort,
-        tools: plain ? (cfg.memory !== false ? [rememberTool] : []) : () => codeTools(rt, skills.length > 0),
+        tools: plain ? (cfg.memory !== false ? [webFetch, rememberTool] : [webFetch]) : () => codeTools(rt, skills.length > 0),
         contextWindow: window,
         beforeWrite: plain ? undefined : (abs) => rt.checkpoints.record(turn, session.cwd, abs),
         lifecycle,
@@ -921,6 +922,7 @@ function registerIpc() {
     const found = await Promise.all([3000, 3001, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8888].map(probe))
     return found.filter((p): p is number => p !== null)
   })
+  ipcMain.handle('favicon:get', (_e, host: string) => favicon(String(host)))
   ipcMain.handle('shell:open', (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })

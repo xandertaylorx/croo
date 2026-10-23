@@ -369,7 +369,7 @@ function applyEdits(text: string, edits: unknown): string {
   }, text)
 }
 
-const webFetch: Tool = {
+export const webFetch: Tool = {
   spec: {
     name: 'web_fetch',
     description:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0
+
+- **Web pages in Chat mode**: plain chats can now read a web page too. Give Croo a link, or ask about something current, and it fetches the page (asking first, like in Code mode, with Allow always on the card). To search, it fetches a results page and opens the best hits
+- **Site icons**: fetched pages show with the site's own favicon instead of an initial. Croo downloads each icon straight from that site, never from an icon service, and falls back to the initial when a site has none
+- **Sources under replies**: when a reply was written from fetched pages, a row under it lists them as clickable chips with a count. Four show; the rest sit behind +N
+
 ## 0.17.0
 
 A round of chat polish, borrowed from crooli-ai.

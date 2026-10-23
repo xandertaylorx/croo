@@ -4487,3 +4487,54 @@ button.inst:hover {
     conic-gradient(from var(--angle), var(--accent) 0deg, var(--line-strong) 110deg, var(--line-strong) 360deg) border-box;
   animation: spin-angle 3s linear infinite;
 }
+
+/* ---------- sources: the pages a reply was written from ---------- */
+
+.src-mark img {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+}
+.src-mark:has(img) {
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.sources-label {
+  margin-right: 2px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.sources .src-chip {
+  margin-right: 0;
+  color: var(--text-2);
+  text-decoration: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.sources .src-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--active);
+}
+.sources .src-chip small {
+  max-width: 160px;
+}
+.src-more {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.src-more:hover {
+  background: var(--hover);
+  color: var(--text);
+}
