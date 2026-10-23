@@ -68,6 +68,7 @@ interface Mounted {
   effort: HTMLButtonElement
   tray: HTMLElement
   queue: HTMLElement
+  tasks: HTMLElement
   hero: HTMLElement | null
   stick: boolean
 }
@@ -336,6 +337,8 @@ function endThinking(v: ChatView) {
 }
 
 function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
+  // The task list lives pinned above the message box, not in the thread.
+  if (item.name === 'todo_write') return h('div', { class: 'tool-hidden', hidden: true })
   const [, , ic] = VERBS[item.name] ?? ['', '', (item.name.startsWith('mcp__') ? 'plug' : 'file') as IconName]
   const state =
     item.status === 'running'
@@ -653,6 +656,64 @@ function syncSend() {
   m.input.placeholder = busy ? 'Queue a message, it sends when this finishes…' : (m.input.dataset.ph ?? m.input.placeholder)
 }
 
+// ---------- task list ----------
+
+interface Task {
+  text: string
+  state: 'done' | 'now' | 'todo'
+}
+
+const MARKS: Record<string, Task['state']> = { x: 'done', '~': 'now', ' ': 'todo' }
+
+/** The latest todo_write list in the chat, read back from its result ("[x] step" lines). */
+function latestTasks(v: ChatView): { tasks: Task[]; key: string; thisTurn: boolean } | null {
+  let lastUser = -1
+  let found = -1
+  v.items.forEach((it, i) => {
+    if (it.kind === 'user') lastUser = i
+    if (it.kind === 'tool' && it.name === 'todo_write' && it.status === 'ok' && it.result) found = i
+  })
+  if (found < 0) return null
+  const result = (v.items[found] as Extract<Item, { kind: 'tool' }>).result!
+  const tasks = result
+    .split('\n')
+    .map((l) => /^\[(x|~| )\] (.*)$/.exec(l))
+    .filter((x): x is RegExpExecArray => !!x)
+    .map((x) => ({ state: MARKS[x[1]], text: x[2] }))
+  return tasks.length ? { tasks, key: result, thisTurn: found > lastUser } : null
+}
+
+function paintTasks() {
+  if (!m) return
+  const v = m.view
+  const list = latestTasks(v)
+  const done = list?.tasks.filter((t) => t.state === 'done').length ?? 0
+  const finished = !!list && done === list.tasks.length
+  // A finished list from an earlier turn, or one you closed, stays out of the way.
+  const show = !!list && v.tasksDismissed !== list.key && (!finished || list.thisTurn)
+  m.tasks.hidden = !show
+  if (!show || !list) return m.tasks.replaceChildren()
+  const open = v.tasksOpen ?? !finished
+  const now = list.tasks.find((t) => t.state === 'now')
+  m.tasks.className = `tasks ${open ? 'open' : ''} ${finished ? 'finished' : ''}`
+  m.tasks.replaceChildren(
+    h(
+      'div',
+      { class: 'tasks-head' },
+      h(
+        'button',
+        { class: 'tasks-toggle', type: 'button', 'aria-expanded': String(open), onClick: () => ((v.tasksOpen = !open), paintTasks()) },
+        finished ? h('span', { class: 'task-mark done' }, icon('check', 11)) : h('span', { class: 'tasks-ring', style: `--p:${list.tasks.length ? done / list.tasks.length : 0}` }),
+        h('span', { class: 'tasks-title' }, finished ? 'All tasks done' : (now?.text ?? 'Tasks')),
+        h('span', { class: 'tasks-count' }, `${done}/${list.tasks.length}`),
+        icon('chevronDown', 12),
+      ),
+      finished ? h('button', { class: 'tasks-x', type: 'button', title: 'Hide', onClick: () => ((v.tasksDismissed = list.key), paintTasks()) }, icon('x', 11)) : null,
+    ),
+    ...(open ? [h('ol', { class: 'tasks-list' }, list.tasks.map((t) => h('li', { class: `task ${t.state}` }, h('span', { class: 'task-mark' }, t.state === 'done' ? icon('check', 11) : null), h('span', { class: 'task-text' }, t.text))))] : []),
+  )
+}
+
 function paintQueue() {
   if (!m) return
   const v = m.view
@@ -736,6 +797,10 @@ export function handleEvent(ev: ChatEvent) {
         run.image = ev.image
         if (m?.view === v) touch(run)
       } else push(v, { kind: 'tool', name: ev.name, summary: ev.summary, status, result: ev.result, image: ev.image })
+      if (ev.name === 'todo_write') {
+        v.tasksOpen = undefined
+        if (m?.view === v) paintTasks()
+      }
       setStatus(v, 'thinking')
       break
     }
@@ -805,6 +870,7 @@ async function sendMessage(v: ChatView, text: string, atts: Attachment[]) {
   v.tokens = { input: 0, output: 0 }
   v.streamed = 0
   push(v, { kind: 'user', text, attachments: atts.length ? atts.map(toView) : undefined })
+  if (m?.view === v) paintTasks()
   setStatus(v, 'thinking')
   const res = await croo.send(v.id, text, atts)
   if (!res.ok) {
@@ -1033,7 +1099,8 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const composerWrap = h('div', { class: 'composer-wrap' })
   const tray = h('div', { class: 'attach-tray', hidden: true })
   const queue = h('div', { class: 'queue', hidden: true })
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, hero: null, stick: true }
+  const tasks = h('div', { class: 'tasks', hidden: true })
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, tasks, hero: null, stick: true }
   const mounted = m
 
   input.value = view.draft
@@ -1149,6 +1216,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
     ),
   )
   composerWrap.append(
+    tasks,
     queue,
     h('div', { class: 'composer' }, tray, input, voice.bar, h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('paperclip', 17)), voice.mic, send),
     h(
@@ -1170,6 +1238,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
   }
   paintStatus()
   paintQueue()
+  paintTasks()
   refreshMode()
   paintTray()
   autosize()

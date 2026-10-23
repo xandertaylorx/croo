@@ -60,6 +60,8 @@ async function stream(text: string, onText: (d: string) => void, signal?: AbortS
   }
 }
 
+const STEPS = ['Look around the folder', 'Write a small file', 'Wrap up the tour']
+
 const lastUser = (req: ChatRequest) => req.messages.map((m) => m.role).lastIndexOf('user')
 
 /** Scripted stand-in for a model: streams markdown, calls list_files, then write_file. */
@@ -76,18 +78,21 @@ export function demoProvider(): Provider {
         await stream(CHAT, onText, req.signal)
         return { text: CHAT, thinking: THOUGHT, usage, toolCalls: [] }
       }
+      const todos = (n: number) => ({ id: `todo${n}`, name: 'todo_write', args: { todos: STEPS.map((content, i) => ({ content, status: i < n ? 'completed' : i === n ? 'in_progress' : 'pending' })) } })
       if (last?.role === 'user') {
         await stream(INTRO, onText, req.signal)
-        return { text: INTRO, thinking: THOUGHT, usage, toolCalls: [{ id: 'demo1', name: 'list_files', args: {} }] }
+        return { text: INTRO, thinking: THOUGHT, usage, toolCalls: [todos(0), { id: 'demo1', name: 'list_files', args: {} }] }
       }
       const wrote = req.messages.some((m, i) => m.role === 'tool' && m.name === 'write_file' && i > lastUser(req))
       if (!wrote) {
         return {
           text: '',
           usage,
-          toolCalls: [{ id: 'demo2', name: 'write_file', args: { path: 'croo-demo.txt', content: 'ribbit\nCroo was here.\n' } }],
+          toolCalls: [todos(1), { id: 'demo2', name: 'write_file', args: { path: 'croo-demo.txt', content: 'ribbit\nCroo was here.\n' } }],
         }
       }
+      const listed = req.messages.some((m, i) => m.role === 'tool' && m.name === 'todo_write' && m.toolCallId === 'todo3' && i > lastUser(req))
+      if (!listed) return { text: '', usage, toolCalls: [todos(3)] }
       await stream(OUTRO, onText, req.signal)
       return { text: OUTRO, usage, toolCalls: [] }
     },

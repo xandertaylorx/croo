@@ -25,6 +25,8 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 
 ## What’s new in 0.16.0
 
+In 0.16.1, Croo's task list sits above the message box and ticks off as it works, instead of appearing in the chat each time it changes.
+
 **Undo** any turn's file changes, or restore files to before any message. **Plan mode** researches without touching anything and asks you to approve a plan first. The agent can **check its own work in a real browser**: it starts your dev server in the background, opens the page, clicks around and looks at screenshots. Edited files are **type-checked right away**. **Subagents** handle broad research in parallel. You can extend Croo with your own **slash commands, skills and hooks**. See the [changelog](CHANGELOG.md) for details.
 
 ## Features
@@ -118,8 +120,8 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 Update `CHANGELOG.md` and `README.md`, bump the version in `package.json` and `package-lock.json` with `npm version <version> --no-git-tag-version`, and commit. Push the commit and matching version tag; GitHub Actions checks types, runs tests, builds the macOS app and attaches the installers to a GitHub Release:
 
 ```bash
-git tag v0.16.0
-git push origin main v0.16.0
+git tag v0.16.1
+git push origin main v0.16.1
 ```
 
 The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, the button says so and you download the update yourself. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.

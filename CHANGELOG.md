@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.1
+
+- **Pinned task list**: when Croo works through a multi-step task, its plan sits above the message box and ticks off step by step, with the current step and a progress ring in the header. The step updates no longer interrupt the conversation as separate rows. Click to fold it away; once every step is done it shrinks to one line you can close
+- The demo keeps a task list too, so you can see it without a key
+
 ## 0.16.0
 
 - **Undo Croo's changes**: before Croo's file tools change a file, its previous content is saved. **Undo changes** next to Retry puts back everything the last turn changed, and the ↶ button on any of your messages restores the files to how they were before it, keeping the conversation. Editing and resending a message can undo the file changes since then too. Croo is told what was restored. Changes made by shell commands are not tracked

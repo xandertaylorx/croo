@@ -108,7 +108,7 @@ describe('provider message mapping', () => {
 })
 
 describe('demo provider', () => {
-  it('runs a full scripted turn: list_files, write_file, final text', async () => {
+  it('runs a full scripted turn: task list, list_files, write_file, final text', async () => {
     const { demoProvider } = await import('../src/providers/demo.js')
     const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'croo-demo-')))
     const messages: Msg[] = [{ role: 'user', content: 'hi' }]
@@ -124,6 +124,7 @@ describe('demo provider', () => {
     })
     expect(fs.existsSync(path.join(cwd, 'croo-demo.txt'))).toBe(true)
     expect(text).toContain('All done')
-    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'])
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'tool', 'assistant', 'tool', 'tool', 'assistant', 'tool', 'assistant'])
+    expect(messages.filter((m) => m.role === 'tool').map((m) => (m as any).name)).toEqual(['todo_write', 'list_files', 'todo_write', 'write_file', 'todo_write'])
   })
 })
