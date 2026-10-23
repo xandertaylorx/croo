@@ -5,10 +5,15 @@
   "scripts": {
     "audio": "node scripts/gen-audio.mjs",
     "studio": "remotion studio src/index.ts",
-    "render": "node scripts/gen-audio.mjs && remotion render src/index.ts Showcase out/raw.mp4 --crf=18 && ffmpeg -loglevel error -y -i out/raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k -ar 48000 out/croo-showcase.mp4"
+    "render": "node scripts/gen-audio.mjs && remotion render src/index.ts Showcase out/raw.mp4 --crf=18 && ffmpeg -loglevel error -y -i out/raw.mp4 -c:v copy -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k -ar 48000 out/croo-showcase.mp4",
+    "audio:fetch": "node scripts/fetch-audio.mjs",
+    "stills": "node scripts/stills.mjs",
+    "render:launch": "remotion render src/index.ts Launch out/launch-mix.mp4 --codec=h264 --crf=16 --pixel-format=yuv420p --audio-codec=aac --audio-bitrate=320k && node scripts/levels.mjs out/launch-mix.mp4 out/croo-launch.mp4"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.538",
+    "@remotion/media": "^4.0.538",
+    "@remotion/transitions": "^4.0.538",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remotion": "^4.0.538"
