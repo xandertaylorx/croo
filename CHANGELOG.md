@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.0
+
+A round of chat polish, borrowed from crooli-ai.
+
+- **Tool timeline**: consecutive tool calls hang on one thin rail with a dot per step. The running step pulses, finished steps go solid, failures turn red
+- **Reasoning as steps**: the thinking block opens to dim, formatted text on a rail instead of a plain box. While Croo thinks, the last four lines of its reasoning fade past, with animated dots on the label
+- **Compaction card**: the line marking summarized messages is now a card you can open to read the summary that replaced them
+- **Reply details**: hover a reply to see the model, time, tokens and estimated cost of the turn that produced it, next to the copy button
+- **Source chips**: fetched pages show as a small chip with the site's initial and address instead of a bare URL
+- **Jump to latest**: a round button appears when you scroll away from the bottom of a chat
+- **Long messages fold**: a very long message of yours folds to nine lines with Show more
+- **Tables, quotes and rules**: tables get zebra rows and a hover row, quotes get an accent bar and a soft tint, horizontal rules are short and centered
+- A gradient edge circles the message box while Croo works
+
 ## 0.16.1
 
 - **Pinned task list**: when Croo works through a multi-step task, its plan sits above the message box and ticks off step by step, with the current step and a progress ring in the header. The step updates no longer interrupt the conversation as separate rows. Click to fold it away; once every step is done it shrinks to one line you can close

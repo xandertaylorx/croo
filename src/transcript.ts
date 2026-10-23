@@ -49,7 +49,7 @@ export function toItems(messages: Msg[]): Item[] {
 
   const items: Item[] = []
   for (const m of messages) {
-    if (m.summaryBefore) items.push({ kind: 'note', text: COMPACTED_NOTE })
+    if (m.summaryBefore) items.push({ kind: 'note', text: COMPACTED_NOTE, detail: m.summaryBefore })
     if (m.role === 'user' && m.auto) items.push({ kind: 'note', text: autoNote(m) })
     else if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m) })
     else if (m.role === 'assistant') {

@@ -426,7 +426,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
           },
           onNote: (text) => emit({ chatId, type: 'note', text }),
           onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
-          onCompacted: () => emit({ chatId, type: 'compacted' }),
+          onCompacted: (summary) => emit({ chatId, type: 'compacted', summary }),
           onContext: (used) => {
             session.context = { used, window: window ?? 0 }
             if (window) emit({ chatId, type: 'context', used, window })

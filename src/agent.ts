@@ -21,7 +21,7 @@ export interface AgentHooks {
   onNote?(text: string): void
   onUsage(u: Usage): void
   /** The older part of the conversation was just summarized to free up context. */
-  onCompacted?(): void
+  onCompacted?(summary?: string): void
   /** Tokens the conversation now takes in the model's context (the last request plus its reply). */
   onContext?(tokens: number): void
 }
@@ -110,7 +110,7 @@ export async function runTurn(o: TurnOptions): Promise<void> {
     const done = await compact({ provider: o.provider, messages: o.messages, window: o.contextWindow, signal, hard })
     if (!done) return false
     hooks.onUsage(done.usage)
-    hooks.onCompacted?.()
+    hooks.onCompacted?.([...o.messages].reverse().find((x) => x.summaryBefore)?.summaryBefore)
     return true
   }
   for (let step = 0; step < maxSteps; step++) {

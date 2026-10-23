@@ -119,14 +119,14 @@ function renderItem(item: Item): HTMLElement {
         'div',
         { class: 'msg assistant' },
         h('div', { class: 'md', html: renderMarkdown(item.text) }),
-        h('div', { class: 'msg-foot' }, h('button', { class: 'icon-btn small copy-reply', type: 'button', title: 'Copy reply', onClick: (e: Event) => copyReply(e.currentTarget as HTMLElement, item.text) }, icon('copy', 13))),
+        h('div', { class: 'msg-foot' }, h('button', { class: 'icon-btn small copy-reply', type: 'button', title: 'Copy reply', onClick: (e: Event) => copyReply(e.currentTarget as HTMLElement, item.text) }, icon('copy', 13)), item.meta ? h('span', { class: 'msg-meta' }, item.meta) : null),
       )
     case 'thinking':
       return renderThinking(item)
     case 'error':
       return h('div', { class: 'msg error' }, item.text)
     case 'note':
-      return h('div', { class: 'msg note' }, item.text)
+      return item.detail ? renderNoteCard(item) : h('div', { class: 'msg note' }, item.text)
     case 'tool':
       return renderTool(item)
     case 'confirm':
@@ -191,6 +191,7 @@ function renderUser(item: Extract<Item, { kind: 'user' }>): HTMLElement {
   const atts = item.attachments ?? []
   const v = m?.view
   const canRestore = !!v && restorable(v, ordinalOf(v, item))
+  const long = item.text.length > 700 || item.text.split('\n').length > 12
   return h(
     'div',
     { class: 'msg user' },
@@ -201,7 +202,8 @@ function renderUser(item: Extract<Item, { kind: 'user' }>): HTMLElement {
       h('button', { class: 'icon-btn small', type: 'button', title: 'Edit and resend', onClick: () => startEdit(item) }, icon('pencil', 13)),
     ),
     atts.length ? h('div', { class: 'att-cards' }, atts.map(attCard)) : null,
-    item.text ? h('div', { class: 'bubble' }, ...userText(item.text)) : null,
+    item.text ? h('div', { class: `bubble ${long && !open.has(item) ? 'clamped' : ''}` }, ...userText(item.text)) : null,
+    long ? h('button', { class: 'bubble-more', type: 'button', onClick: () => (open.has(item) ? open.delete(item) : open.add(item), touch(item)) }, open.has(item) ? 'Show less' : 'Show more') : null,
   )
 }
 
@@ -306,12 +308,26 @@ async function retryLast() {
   if (last) await rerun(last, last.text)
 }
 
+/** A note you can open: the line, with the text behind it (the summary that replaced earlier messages) below. */
+function renderNoteCard(item: Extract<Item, { kind: 'note' }>): HTMLElement {
+  const isOpen = open.has(item)
+  return h(
+    'div',
+    { class: `msg note-card ${isOpen ? 'open' : ''}` },
+    h('button', { class: 'note-bar', type: 'button', onClick: () => (open.has(item) ? open.delete(item) : open.add(item), touch(item)) }, icon('chevron', 12), h('span', null, item.text), h('small', null, isOpen ? 'Hide summary' : 'Show summary')),
+    isOpen ? h('div', { class: 'note-body md', html: renderMarkdown(item.detail ?? '') }) : null,
+  )
+}
+
+/** The last few lines of reasoning, shown as a fading trace while the model is still thinking. */
+const traceOf = (text: string) => text.trim().split('\n').filter(Boolean).slice(-4).join('\n')
+
 const duration = (s: number) => (s < 1 ? 'a moment' : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`)
 
 /** Claude Code style: a quiet "Thought for 4s" row that opens to show the reasoning. */
 function renderThinking(item: Extract<Item, { kind: 'thinking' }>): HTMLElement {
   const isOpen = open.has(item)
-  const lastLine = item.text.trim().split('\n').filter(Boolean).pop() ?? ''
+  const lastLine = traceOf(item.text)
   return h(
     'div',
     { class: `think ${item.done ? 'done' : 'live'} ${isOpen ? 'open' : ''}` },
@@ -320,9 +336,10 @@ function renderThinking(item: Extract<Item, { kind: 'thinking' }>): HTMLElement 
       { class: 'think-row', type: 'button', onClick: () => (open.has(item) ? open.delete(item) : open.add(item), touch(item)) },
       icon('chevron', 12),
       h('span', { class: `think-label ${item.done ? '' : 'shimmer'}` }, item.done ? (item.seconds ? `Thought for ${duration(item.seconds)}` : 'Thought') : 'Thinking…'),
+      item.done ? null : h('span', { class: 'dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
       !item.done && !isOpen && lastLine ? h('span', { class: 'think-preview' }, lastLine) : null,
     ),
-    isOpen ? h('div', { class: 'think-body' }, item.text.trim()) : null,
+    isOpen ? h('div', { class: 'think-body md', html: renderMarkdown(item.text.trim()) }) : null,
   )
 }
 
@@ -334,6 +351,30 @@ function endThinking(v: ChatView) {
     it.seconds = (performance.now() - (started.get(it) ?? performance.now())) / 1000
     if (m?.view === v) touch(it)
   }
+}
+
+/** A fetched page as a small chip: a coloured initial, the site, and the rest of the address dimmed. */
+function sourceChip(url: string): HTMLElement {
+  let host = url
+  let rest = ''
+  try {
+    const u = new URL(url)
+    host = u.hostname.replace(/^www\./, '')
+    rest = (u.pathname + u.search).replace(/^\/$/, '')
+  } catch {}
+  let hue = 0
+  for (const ch of host) hue = (hue * 31 + ch.charCodeAt(0)) % 360
+  return h('span', { class: 'src-chip', title: url }, h('span', { class: 'src-mark', style: `--hue:${hue}` }, host.charAt(0).toUpperCase()), h('b', null, host), rest ? h('small', null, rest) : null)
+}
+
+/** Put the model, time and cost of the turn under its last reply. */
+function stampReply(v: ChatView, seconds: number) {
+  const lastUser = v.items.map((i) => i.kind).lastIndexOf('user')
+  const reply = [...v.items].slice(lastUser + 1).reverse().find((i): i is Extract<Item, { kind: 'assistant' }> => i.kind === 'assistant')
+  if (!reply) return
+  const model = store.state.profiles.find((p) => p.active)?.model
+  reply.meta = [model, seconds >= 1 ? `${seconds.toFixed(1)}s` : '', metaText(v)].filter(Boolean).join(' · ')
+  if (m?.view === v) touch(reply)
 }
 
 function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
@@ -358,7 +399,7 @@ function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
     },
     icon(ic, 14),
     h('span', { class: 'tool-verb' }, verb(item.name, item.status === 'running')),
-    h('span', { class: 'tool-summary' }, item.summary),
+    item.name === 'web_fetch' ? sourceChip(item.summary) : h('span', { class: 'tool-summary' }, item.summary),
     h('span', { class: 'tool-state' }, state),
   )
   const shot = item.image ? h('button', { class: 'tool-shot', type: 'button', title: 'Open screenshot', onClick: () => openLightbox({ name: 'Screenshot', kind: 'image', dataUrl: item.image }) }, h('img', { src: item.image, alt: 'Screenshot' })) : null
@@ -599,10 +640,10 @@ function touchText(item: Item) {
         // Update in place: rebuilding the row on every frame makes it impossible to hover or click.
         const preview = el.querySelector('.think-preview')
         const body = el.querySelector('.think-body')
-        const lastLine = it.text.trim().split('\n').filter(Boolean).pop() ?? ''
+        const lastLine = traceOf(it.text)
         if (body) {
           const stick = body.scrollHeight - body.scrollTop - body.clientHeight < 40
-          body.textContent = it.text.trim()
+          body.innerHTML = renderMarkdown(it.text.trim())
           if (stick) body.scrollTop = body.scrollHeight
         }
         if (preview) preview.textContent = lastLine
@@ -616,6 +657,14 @@ function touchText(item: Item) {
 
 function follow() {
   if (m?.stick) m.scroll.scrollTop = m.scroll.scrollHeight
+  paintJump()
+}
+
+/** The round "jump to latest" button shows once you have scrolled well away from the bottom. */
+function paintJump() {
+  if (!m) return
+  const away = m.scroll.scrollHeight - m.scroll.scrollTop - m.scroll.clientHeight > 240
+  m.scroll.parentElement?.querySelector('.jump')?.classList.toggle('show', away)
 }
 
 function setStatus(v: ChatView, status: ChatView['status'], label = '', note?: string) {
@@ -651,6 +700,7 @@ function syncSend() {
   const stop = busy && !typed
   m.send.replaceChildren(icon(stop ? 'stop' : 'arrowUp', stop ? 16 : 18))
   m.send.classList.toggle('stop', stop)
+  m.input.closest('.composer')?.classList.toggle('busy', busy)
   m.send.title = stop ? 'Stop' : busy ? 'Queue (↵ or ⌘↵)' : 'Send'
   m.send.disabled = !busy && !typed
   m.input.placeholder = busy ? 'Queue a message, it sends when this finishes…' : (m.input.dataset.ph ?? m.input.placeholder)
@@ -818,7 +868,7 @@ export function handleEvent(ev: ChatEvent) {
       push(v, { kind: 'note', text: 'Plan approved. Plan mode is off and Croo is working in Auto mode.' })
       break
     case 'compacted':
-      push(v, { kind: 'note', text: 'Earlier messages were summarized to free up context' })
+      push(v, { kind: 'note', text: 'Earlier messages were summarized to free up context', detail: ev.summary })
       break
     case 'context':
       v.context = { used: ev.used, window: ev.window }
@@ -833,6 +883,7 @@ export function handleEvent(ev: ChatEvent) {
       refreshFiles()
       void refreshGit()
       endThinking(v)
+      stampReply(v, ev.seconds)
       setStatus(v, 'idle', '', ev.seconds >= 1 ? `Done in ${ev.seconds.toFixed(1)}s` : 'Done')
       flushQueue(v)
       break
@@ -1085,6 +1136,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
 
   const thread = h('div', { class: 'thread' })
   const scroll = h('div', { class: 'scroll' }, thread)
+  const jump = h('button', { class: 'jump', type: 'button', title: 'Scroll to latest', 'aria-label': 'Scroll to latest', onClick: () => scroll.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' }) }, icon('chevron', 15))
   const status = h('div', { class: 'status' })
   const input = h('textarea', { class: 'input-area', rows: 1, placeholder: plain ? 'Message Croo…' : `Ask Croo about ${folder?.name ?? 'this folder'}…`, spellcheck: 'true' })
   input.dataset.ph = input.placeholder
@@ -1150,6 +1202,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
   })
   scroll.addEventListener('scroll', () => {
     mounted.stick = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80
+    paintJump()
   })
   thread.addEventListener('click', (e) => {
     const runBtn = (e.target as HTMLElement).closest<HTMLElement>('.code-run')
@@ -1211,7 +1264,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
               h('button', { class: 'icon-btn no-drag btn-term', type: 'button', title: 'Terminal (⌘J)', onClick: () => bus.terminal() }, icon('terminal', 17)),
             ]),
       ),
-      scroll,
+      h('div', { class: 'scroll-wrap' }, scroll, jump),
       composerWrap,
     ),
   )
