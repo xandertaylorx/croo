@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.0
+
+- **Font setting**: Settings → General → Appearance now has a Font choice: Default, Rounded, Humanist, Serif or Mono, each shown in its own typeface. It applies at once and is remembered. Code and the terminal stay monospaced
+
 ## 0.19.1
 
 - **Slimmer update button**: the "Croo is out" banner at the bottom left is now a small round icon. It widens on hover to say "Update", and while it downloads it turns into a progress ring with the percent ("Updating 42%"), then "Restarting…"

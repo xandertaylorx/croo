@@ -80,6 +80,22 @@ export const remember = {
   },
 }
 
+/** Fonts for the app text, all already on the machine. The first is the default and leaves the stylesheet's stack alone. */
+export const FONTS: { id: string; label: string; stack?: string }[] = [
+  { id: 'default', label: 'Default' },
+  { id: 'rounded', label: 'Rounded', stack: "ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Nunito', system-ui, sans-serif" },
+  { id: 'humanist', label: 'Humanist', stack: "'Avenir Next', Avenir, Seravek, 'Gill Sans', 'Segoe UI', Optima, sans-serif" },
+  { id: 'serif', label: 'Serif', stack: "ui-serif, 'New York', Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif" },
+  { id: 'mono', label: 'Mono', stack: "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace" },
+]
+export function applyFont(id: string) {
+  const f = FONTS.find((x) => x.id === id)
+  if (f?.stack) document.documentElement.style.setProperty('--font', f.stack)
+  else document.documentElement.style.removeProperty('--font')
+  remember.set('font', f?.id ?? 'default')
+}
+applyFont(remember.get('font') ?? 'default')
+
 /** Where an in-app update is, for the sidebar banner and Settings → About. Null when none is running. */
 export let updateProgress: { text: string; fraction?: number } | null = null
 const updateListeners = new Set<() => void>()

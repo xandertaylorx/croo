@@ -5,7 +5,7 @@ import type { AppState, McpServerInfo, PermissionMode } from '../shared/ipc.js'
 import type { Effort } from '../effort.js'
 import { modelList } from './models.js'
 import type { IconName } from './dom.js'
-import { croo, installUpdate, onUpdateProgress, store, updateProgress } from './store.js'
+import { applyFont, croo, FONTS, installUpdate, onUpdateProgress, remember, store, updateProgress } from './store.js'
 
 type Choice = Preset | 'custom'
 
@@ -445,7 +445,26 @@ export function openSettings() {
       ),
       h('div', { class: 'section-label' }, 'Appearance'),
       h('p', { class: 'muted' }, 'Croo follows your system’s light or dark setting.'),
+      h('div', { class: 'section-label' }, 'Font'),
+      fontChips(),
+      h('p', { class: 'muted' }, 'The typeface for Croo’s text. Code and the terminal stay monospaced.'),
     ]
+  }
+
+  const fontChips = () => {
+    const row = h('div', { class: 'chips' })
+    const paintFonts = () => {
+      const cur = remember.get('font') ?? 'default'
+      row.replaceChildren(
+        ...FONTS.map((f) => {
+          const b = h('button', { class: `chipbtn ${cur === f.id ? 'on' : ''}`, type: 'button', role: 'radio', 'aria-checked': cur === f.id, onClick: () => (applyFont(f.id), paintFonts()) }, f.label)
+          if (f.stack) b.style.fontFamily = f.stack
+          return b
+        }),
+      )
+    }
+    paintFonts()
+    return row
   }
 
   const updateRow = () => {
