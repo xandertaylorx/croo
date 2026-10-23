@@ -147,6 +147,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .pill svg { color: #d9a400; }
 .pill:hover { background: var(--soft); }
 .small-btn { height: 32px; padding: 0 12px; font-size: 13px; }
+/* the nav's link hover colour is more specific than the button's own, and made the label vanish on the dark button */
+.nav nav a.btn.primary, .nav nav a.btn.primary:hover { color: var(--ink-text); }
 
 /* hero: headline left, the pitch and the buttons right, the app below */
 .hero { position: relative; padding-top: 88px; }
