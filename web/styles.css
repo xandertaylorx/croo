@@ -156,9 +156,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 h1 { max-width: 11ch; font: 600 clamp(44px, 6.6vw, 84px) / 1 var(--display); letter-spacing: -0.045em; text-wrap: balance; }
 .lede { max-width: 580px; margin-top: 24px; color: var(--text-2); font-size: clamp(16px, 2vw, 18px); line-height: 1.6; text-wrap: pretty; }
 .hero-side .lede { margin-top: 0; }
+.hero-side .hint { margin-top: 12px; color: var(--text-3); font-size: 13.5px; line-height: 1.6; }
 .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 .btn.big { height: 46px; padding: 0 22px; border-radius: 10px; font-size: 15px; }
-.install { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; margin-top: 18px; padding: 5px 5px 5px 16px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, transparent); text-align: left; }
+.install { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; margin-top: 28px; padding: 5px 5px 5px 8px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, transparent); text-align: left; }
 .install-cmd { display: flex; gap: 10px; flex: 1; min-width: 0; font-size: 13px; color: var(--text-2); }
 .install-cmd code { min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .install-cmd code::-webkit-scrollbar { display: none; }
@@ -250,6 +251,10 @@ h1 { max-width: 11ch; font: 600 clamp(44px, 6.6vw, 84px) / 1 var(--display); let
   .frog .eye, .frog .hop { animation: none; }
   .btn { transition: none; }
 }
+
+.install { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: 6px; }
+.install .tag { grid-column: 1 / -1; justify-self: start; margin: 6px 0 0 8px; }
+.install-cmd { padding-left: 8px; }
 
 /* footer */
 .foot { margin-top: 136px; border-top: 1px solid var(--line); }
