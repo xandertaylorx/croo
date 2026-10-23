@@ -3220,55 +3220,101 @@ button.inst:hover {
   text-align: center;
 }
 
-/* ---------- update banner ---------- */
+/* ---------- update button ---------- */
 
+/* A round icon at rest; widens to a pill on hover, and while updating shows a progress ring and the percent. */
 .update {
   position: relative;
-  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 2px;
-  margin: 0 10px 4px;
-  padding: 2px 4px 2px 2px;
+  align-self: flex-start;
+  margin: 0 10px 6px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--surface);
 }
 .update-main {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
+  gap: 0;
+  height: 28px;
+  padding: 0 6px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 999px;
   background: transparent;
   color: var(--accent);
-  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .update-main:hover {
   background: var(--hover);
 }
-.update-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.update-ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
 }
-.update-text b {
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
+.update.busy .update-ring {
+  background: conic-gradient(var(--accent) var(--p, 0%), var(--line) 0);
+  -webkit-mask: radial-gradient(circle, transparent 7px, #000 8px);
+  mask: radial-gradient(circle, transparent 7px, #000 8px);
 }
-.update-text small {
-  color: var(--text-3);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
+.update.busy .update-ring svg {
+  display: none;
 }
-.update.busy .update-main:hover {
+.update.busy .update-ring.indeterminate {
+  background: conic-gradient(var(--accent) 25%, var(--line) 0);
+  animation: update-spin 0.9s linear infinite;
+}
+.update-label,
+.update-x {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-width 0.18s ease, opacity 0.12s ease, margin 0.18s ease;
+}
+.update:hover .update-label,
+.update:focus-within .update-label,
+.update.busy .update-label {
+  max-width: 140px;
+  margin: 0 4px 0 6px;
+  opacity: 1;
+}
+.update-x {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: transparent;
+  color: var(--text-3);
 }
-/* Install progress: a hairline along the bottom edge of the banner (and the Settings row). */
+.update:hover .update-x,
+.update:focus-within .update-x {
+  max-width: 20px;
+  margin-right: 4px;
+  opacity: 1;
+}
+.update.busy .update-x {
+  display: none;
+}
+.update-x:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Install progress hairline along the bottom edge of the Settings → About row. */
 .update-fill {
   position: absolute;
   left: 0;

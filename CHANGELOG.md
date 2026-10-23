@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.1
+
+- **Slimmer update button**: the "Croo is out" banner at the bottom left is now a small round icon. It widens on hover to say "Update", and while it downloads it turns into a progress ring with the percent ("Updating 42%"), then "Restarting…"
+
 ## 0.19.0
 
 Chat mode gets tools that answer with a card instead of a paragraph.

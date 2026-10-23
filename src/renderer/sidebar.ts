@@ -52,30 +52,34 @@ function chatRow(c: ChatInfo): HTMLElement {
   return row
 }
 
-/** "Croo 0.7.0 is out": bottom left, until you get it or wave it away. */
+/** A small round update button, bottom left. It widens on hover to say what it does, and while updating shows the percent. */
 function updateBanner(): HTMLElement | null {
   const u = store.state.update
   if (!u || remember.get('dismissedUpdate') === u.version) return null
-  const idle = u.zip ? 'Click to update' : 'Click to download'
-  const small = h('small', null, idle)
-  const fill = h('div', { class: 'update-fill' })
-  const main = h('button', { class: 'update-main no-drag', type: 'button', onClick: async () => {
-    if (!u.zip) small.textContent = 'Opening download…'
+  const label = h('span', { class: 'update-label' }, 'Update')
+  const ring = h('span', { class: 'update-ring' }, icon('download', 14))
+  const main = h('button', { class: 'update-main no-drag', type: 'button', 'aria-label': `Update Croo to ${u.version}`, onClick: async () => {
     const err = await installUpdate()
-    if (err) small.textContent = err
-    else if (!u.zip) small.textContent = idle
-  } }, icon('download', 15), h('span', { class: 'update-text' }, h('b', null, `Croo ${u.version} is out`), small))
-  const dismiss = h('button', { class: 'row-btn show no-drag', type: 'button', title: 'Not now', onClick: () => (remember.set('dismissedUpdate', u.version), renderSidebar()) }, icon('x', 13))
-  const banner = h('div', { class: 'update', 'data-tip': u.notes ? u.notes.split('\n').filter(Boolean).slice(0, 3).join(' · ').slice(0, 160) : 'A newer version is available' }, main, dismiss, fill)
-  // The sidebar is rebuilt often, so the banner paints from the shared progress rather than keeping its own.
+    if (err) label.textContent = err
+  } }, ring, label)
+  const dismiss = h('button', { class: 'update-x no-drag', type: 'button', title: 'Not now', 'aria-label': 'Dismiss update', onClick: () => (remember.set('dismissedUpdate', u.version), renderSidebar()) }, icon('x', 11))
+  const notes = u.notes ? u.notes.split('\n').filter(Boolean).slice(0, 3).join(' · ').slice(0, 160) : ''
+  const banner = h('div', { class: 'update', 'data-tip': `Croo ${u.version} is out${notes ? `: ${notes}` : ''}` }, main, dismiss)
+  // The sidebar is rebuilt often, so the button paints from the shared progress rather than keeping its own.
   const paint = () => {
     const p = updateProgress
     banner.classList.toggle('busy', !!p)
     main.toggleAttribute('disabled', !!p)
-    dismiss.style.display = p ? 'none' : ''
-    if (p) small.textContent = p.text
-    fill.style.width = p?.fraction !== undefined ? `${p.fraction * 100}%` : '0'
-    fill.classList.toggle('indeterminate', !!p && p.fraction === undefined)
+    if (!p) {
+      label.textContent = u.zip ? 'Update' : 'Download'
+      ring.style.removeProperty('--p')
+      ring.classList.remove('indeterminate')
+      return
+    }
+    const done = p.fraction === 1
+    label.textContent = done ? 'Restarting…' : p.fraction === undefined ? 'Updating…' : `Updating ${Math.floor(p.fraction * 100)}%`
+    ring.style.setProperty('--p', `${(p.fraction ?? 0) * 100}%`)
+    ring.classList.toggle('indeterminate', p.fraction === undefined)
   }
   paint()
   const stop = onUpdateProgress(() => (banner.isConnected ? paint() : stop()))
@@ -140,7 +144,7 @@ export function renderSidebar() {
   root.replaceChildren(
     h('div', { class: 'sb-top drag' }, segmented(), h('span', { class: 'push-right' }), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Search (⌘K)', onClick: () => bus.command('search') }, icon('search', 16)), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Hide sidebar (⌘B)', onClick: () => document.getElementById('app')?.classList.add('sidebar-hidden') }, icon('sidebar', 17))),
     list,
-    ...(updateBanner() ? [updateBanner()!] : []),
+    ...[updateBanner()].filter((x): x is HTMLElement => !!x),
     h('div', { class: 'sb-foot' }, store.state.avatar ? h('img', { class: 'avatar', src: store.state.avatar, alt: '' }) : h('span', { class: 'avatar blank' }, (store.state.userName || 'U').trim().slice(0, 1).toUpperCase()), h('span', { class: 'brand' }, store.state.userName || 'User'), h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Settings (⌘,)', onClick: () => bus.settings() }, icon('gear', 17))),
   )
   list.scrollTop = scrollTop
