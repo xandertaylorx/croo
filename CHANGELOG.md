@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.22.0
+
+- **Use your subscription**: connect a Claude (Pro/Max/Team) or ChatGPT (Plus/Pro) plan with no API key. Croo runs the `claude` or `codex` CLI you already signed in to, shows its tool calls as normal cards, keeps the conversation going between messages, and warns you when you near your plan's usage limit. Settings shows whether the CLI is installed and signed in
+- **Models for subscriptions**: a built-in model list with aliases (`opus`, `sonnet`), per-model reasoning levels and context sizes, and a `models.json` in Croo's data folder to add a model that ships before the app updates
+- **Work groups**: a run of tool calls folds under one line ("Edited 2 files and ran 1 command"), open while it works and folded once the reply follows; click to look inside
+- **Updates between the work**: a message in the middle of a task no longer gets a copy button and stats, and the agent is told to write an update only when it has learned something, not after every step
+- **Changed files**: a coding turn ends with the list of files it changed, one click from each
+- **Fix**: bold text around code (`**`name`**`) showed stray asterisks
+- **New website**: rebuilt around the app's own windows, drawn from its code so they stay sharp at any size
+
 ## 0.21.0
 
 - **Colour palettes**: pick Croo (the neutral greys and frog green) or Crooli, a palette taken from crooli.com: warm ivory and oat, ink, a lapis-blue accent, with sage, sky and clay for charts and code. Each has a light and a dark side

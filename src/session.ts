@@ -12,6 +12,8 @@ export interface Session {
   /** `chat` is a plain conversation with no folder or tools; everything else is a coding session. */
   kind?: 'chat' | 'code'
   messages: Msg[]
+  /** The conversation id of the subscription CLI (Claude Code or Codex) running this chat, to pick it up again next turn. */
+  cli?: { id: string; session: string }
   /** Tokens the last request used and the model's window, for the context ring. */
   context?: { used: number; window: number }
 }

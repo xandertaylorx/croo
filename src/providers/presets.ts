@@ -8,9 +8,13 @@ export interface Preset {
   model: string
   /** Local servers need no key. */
   noKey?: boolean
+  /** Signs in through the provider's own CLI with a subscription, not an API key. */
+  subscription?: boolean
 }
 
 export const PRESETS: Preset[] = [
+  { id: 'claude-code', label: 'Claude subscription', type: 'claude-code', model: 'claude-sonnet-5-5', noKey: true, subscription: true },
+  { id: 'codex', label: 'ChatGPT subscription', type: 'codex', model: 'gpt-6.1-sol', noKey: true, subscription: true },
   { id: 'openai', label: 'OpenAI', type: 'openai', model: 'gpt-4o' },
   { id: 'anthropic', label: 'Anthropic (Claude)', type: 'anthropic', model: 'claude-sonnet-4-5' },
   { id: 'gemini', label: 'Google Gemini', type: 'gemini', model: 'gemini-2.5-pro' },

@@ -33,10 +33,44 @@ function showRelease(rel) {
   $('#rel-notes').href = rel.html_url
   const dl = $('#dl-arm')
   dl.href = arm ? arm.browser_download_url : rel.html_url
+  if (arm && /Mac/i.test(navigator.platform || navigator.userAgent)) $('#hero-dl').href = arm.browser_download_url
   if (arm) $('#dl-arm-size').textContent = fmtSize(arm.size)
   if (intel) Object.assign($('#dl-intel'), { href: intel.browser_download_url, hidden: false })
   if (zip) Object.assign($('#dl-zip'), { href: zip.browser_download_url, hidden: false })
 }
+
+async function stars() {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('croo.stars') || 'null')
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.n
+  } catch {}
+  const res = await fetch(`https://api.github.com/repos/${REPO}`, { headers: { accept: 'application/vnd.github+json' } })
+  if (!res.ok) throw new Error(String(res.status))
+  const n = (await res.json()).stargazers_count
+  try {
+    sessionStorage.setItem('croo.stars', JSON.stringify({ at: Date.now(), n }))
+  } catch {}
+  return n
+}
+const short = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+stars().then((n) => n > 0 && ($('#stars').textContent = short(n))).catch(() => {})
+
+// The app windows are the app's own pages, drawn at their real size and scaled to the column: sharp at any width.
+function fitApps() {
+  document.querySelectorAll('.app[data-w]').forEach((app) => {
+    const w = Number(app.dataset.w)
+    const h = Number(app.dataset.h)
+    const view = app.querySelector('.app-view')
+    const frame = view.querySelector('iframe')
+    const s = view.clientWidth / w
+    frame.style.width = `${w}px`
+    frame.style.height = `${h}px`
+    frame.style.transform = `scale(${s})`
+    view.style.height = `${Math.round(h * s)}px`
+  })
+}
+fitApps()
+new ResizeObserver(fitApps).observe(document.body)
 
 // Offline or rate limited: the buttons already point at the releases page.
 latestRelease().then(showRelease).catch(() => {})

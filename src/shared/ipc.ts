@@ -47,10 +47,12 @@ export type Card =
 export type Item =
   | { kind: 'user'; text: string; attachments?: AttachmentView[] }
   /** `meta` is the model and cost of the turn this reply ended, shown quietly under it. */
-  | { kind: 'assistant'; text: string; streaming?: boolean; meta?: string; /** Pages Croo read to write this reply. */ sources?: string[] }
+  | { kind: 'assistant'; text: string; streaming?: boolean; meta?: string; /** Pages Croo read to write this reply. */ sources?: string[]; /** A message in the middle of the work (more tool calls follow it), not the final reply: no copy button or stats. */ commentary?: boolean }
   | { kind: 'thinking'; text: string; done: boolean; seconds?: number }
   | { kind: 'tool'; name: string; summary: string; status: ToolStatus; result?: string; /** A screenshot the tool took, as a data: URL. */ image?: string; card?: Card }
   | { kind: 'confirm'; id: string; name: string; summary: string; preview: PreviewDto }
+  /** The files a turn changed, listed under its final reply. Only ever exists live. */
+  | { kind: 'changes'; files: string[] }
   | { kind: 'error'; text: string }
   /** A quiet line in the thread, e.g. "Summarized earlier messages to free up context". */
   | { kind: 'note'; text: string; /** What a click on the note opens, e.g. the summary that replaced earlier messages. */ detail?: string }
@@ -127,6 +129,8 @@ export interface ProfileInfo {
   local: boolean
   /** Run by Croo itself (the downloaded local model), managed from the local model card. */
   engine: boolean
+  /** Set when this signs in through a CLI (a Claude or ChatGPT subscription) and has no key. */
+  subscription?: 'claude-code' | 'codex'
   /** Effort levels this provider's model accepts, empty when it has no such setting. */
   efforts: Effort[]
   /** What the model costs per million tokens, when known. */
@@ -275,6 +279,16 @@ export interface AddProfileRequest {
 
 export type Result = { ok: true } | { ok: false; error: string }
 
+/** Whether a subscription's CLI is installed and signed in. */
+export interface SubscriptionStatus {
+  id: 'claude-code' | 'codex'
+  installed: boolean
+  version?: string
+  signedIn: boolean
+  account?: string
+  problem?: string
+}
+
 /** A custom slash command, for the menu that opens when you type "/". */
 export interface SlashCommand {
   name: string
@@ -317,6 +331,7 @@ export interface CrooApi {
   stop(chatId: string): Promise<void>
   answer(chatId: string, confirmId: string, answer: 'y' | 'n' | 'a'): Promise<void>
   addProfile(req: AddProfileRequest): Promise<Result>
+  subscriptionStatus(): Promise<SubscriptionStatus[]>
   useProfile(name: string): Promise<void>
   removeProfile(name: string): Promise<void>
   startDemo(): Promise<void>

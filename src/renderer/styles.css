@@ -5270,3 +5270,142 @@ button.inst:hover {
   font-size: 13px;
   text-align: center;
 }
+
+/* ---------- work groups: a run of tool calls folds under one summary line ---------- */
+
+.work {
+  margin: 4px 0;
+}
+.work-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px 5px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.work-head:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+}
+.work-head svg {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.12s ease;
+}
+.work-head[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+.work-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-fail {
+  flex: none;
+  color: var(--danger);
+  font-size: 11.5px;
+}
+.work-head .spinner {
+  margin-left: auto;
+}
+.work.solo .work-head {
+  display: none;
+}
+.work-body {
+  padding-left: 6px;
+  margin-left: 6px;
+  border-left: 1px solid var(--line);
+}
+.work.solo .work-body {
+  padding-left: 0;
+  margin-left: 0;
+  border-left: 0;
+}
+
+/* a message in the middle of the work is not a final reply: no copy button, no stats */
+.msg.assistant.commentary .msg-foot {
+  display: none;
+}
+
+/* ---------- the files a turn changed ---------- */
+
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 6px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.changes-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.changes-head .link-btn {
+  margin-left: auto;
+  font-weight: 400;
+}
+.changes-file {
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.changes-file:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.08));
+  color: var(--text);
+}
+.changes-more {
+  padding: 2px 6px;
+  color: var(--text-3);
+}
+
+/* ---------- subscription sign-in status ---------- */
+
+.sub-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.sub-status svg {
+  flex: none;
+  margin-top: 3px;
+}
+.sub-status.ok svg {
+  color: var(--accent);
+}
+.sub-status.bad svg {
+  color: var(--danger);
+}

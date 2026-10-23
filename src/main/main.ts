@@ -22,6 +22,7 @@ import { favicon, tile } from './favicon.js'
 import { McpManager, parseMcpJson } from '../mcp.js'
 import { setRipgrepDir } from '../tools/rg.js'
 import { contextWindow } from '../compact.js'
+import { SUBSCRIPTIONS, defaultModel, detect, isSubscription, modelEfforts, modelWindow, runExternal } from '../subscriptions/index.js'
 import { demoProvider } from '../providers/demo.js'
 import { fixPath } from './shellenv.js'
 import { LOCAL_MODELS, VOICE_MODEL, localModel } from '../localmodels.js'
@@ -81,7 +82,7 @@ const runner = new Runner()
 
 const modelCache = new Map<string, { at: number; value: Awaited<ReturnType<typeof listModels>> }>()
 
-const usable = (p: Profile) => !!resolveApiKey(p) || (p.type === 'openai' && isLocalUrl(p.baseUrl))
+const usable = (p: Profile) => isSubscription(p.type) || !!resolveApiKey(p) || (p.type === 'openai' && isLocalUrl(p.baseUrl))
 const activeProfile = (): [string, Profile] | null => {
   const p = cfg.profiles[cfg.activeProfile]
   return p ? [cfg.activeProfile, p] : null
@@ -197,15 +198,16 @@ function buildState(): AppState {
     configError,
     profiles: Object.entries(cfg.profiles).map(([name, p]) => ({
       name,
-      provider: p.engine ? 'on this Mac' : p.baseUrl ? new URL(p.baseUrl).hostname.replace(/^api\./, '') : p.type,
+      provider: isSubscription(p.type) ? SUBSCRIPTIONS[p.type].label : p.engine ? 'on this Mac' : p.baseUrl ? new URL(p.baseUrl).hostname.replace(/^api\./, '') : p.type,
+      subscription: isSubscription(p.type) ? p.type : undefined,
       model: p.model,
       active: name === cfg.activeProfile,
       hasKey: usable(p),
-      keyHint: p.apiKey ? maskKey(p.apiKey) : resolveApiKey(p) ? 'from environment' : '',
+      keyHint: isSubscription(p.type) ? 'signed in with the CLI' : p.apiKey ? maskKey(p.apiKey) : resolveApiKey(p) ? 'from environment' : '',
       keySource: p.apiKey ? 'saved' : resolveApiKey(p) ? 'env' : 'none',
       local: isLocalUrl(p.baseUrl),
       engine: !!p.engine,
-      efforts: effortLevels(p.type, p.model) ?? [],
+      efforts: (isSubscription(p.type) ? modelEfforts(p.type, p.model) : effortLevels(p.type, p.model)) ?? [],
       price: priceFor(p) ?? undefined,
     })),
     localModels: LOCAL_MODELS.map((l) => {
@@ -393,6 +395,42 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
           m.content += `\n\n[Context from a hook]\n${r.context}`
         }
       }
+      if (!demo && profile && isSubscription(profile.type)) {
+        const sub = profile.type
+        const prompt = userMsg.role === 'user' ? userMsg.content : text
+        if (userMsg.role === 'user' && userMsg.images?.length) emit({ chatId, type: 'note', text: `${SUBSCRIPTIONS[sub].label} cannot receive images from here yet, so they were left out.` })
+        const win = modelWindow(sub, profile.model)
+        const out = await runExternal({
+          id: sub,
+          model: profile.model,
+          prompt,
+          cwd: session.cwd,
+          mode: rt.permissions.mode,
+          effort: cfg.effort,
+          resume: session.cli?.id === sub ? session.cli.session : undefined,
+          history: messages.slice(0, -1),
+          plain,
+          userName: cfg.userName || undefined,
+          signal: ac.signal,
+          sink: {
+            thinking: () => emit({ chatId, type: 'thinking' }),
+            reasoning: (delta) => emit({ chatId, type: 'reasoning', delta }),
+            text: (delta) => emit({ chatId, type: 'text', delta }),
+            textEnd: () => emit({ chatId, type: 'textEnd' }),
+            toolRunning: (name, summary) => emit({ chatId, type: 'toolRunning', name, summary }),
+            toolDone: (name, summary, ok, result) => emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result) }),
+            usage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
+            context: (used) => {
+              session.context = { used, window: win }
+              emit({ chatId, type: 'context', used, window: win })
+            },
+            note: (t) => emit({ chatId, type: 'note', text: t }),
+          },
+        })
+        messages.push(...out.messages)
+        if (out.sessionId) session.cli = { id: sub, session: out.sessionId }
+        if (ac.signal.aborted) throw new Cancelled()
+      } else
       await runTurn({
         provider,
         system: plain ? buildChatPrompt(new Date(), identity, userCtx) : buildSystemPrompt(session.cwd, new Date(), identity, userCtx, { plan: rt.permissions.mode === 'plan', skills: skillsBlock(skills) }),
@@ -473,7 +511,7 @@ async function addProfile(req: AddProfileRequest): Promise<Result> {
   let profile: Profile
   let base: string
   if (preset) {
-    profile = { type: preset.type, model: req.model?.trim() || preset.model }
+    profile = { type: preset.type, model: req.model?.trim() || (isSubscription(preset.type) ? defaultModel(preset.type) : preset.model) }
     if (preset.baseUrl) profile.baseUrl = preset.baseUrl
     if (!preset.noKey) {
       if (!req.apiKey?.trim()) return { ok: false, error: 'Paste your API key to continue.' }
@@ -498,8 +536,8 @@ async function addProfile(req: AddProfileRequest): Promise<Result> {
   profile.model = check.model
 
   let name = base
-  // A profile that has no key yet is replaced in place instead of getting a "2" twin.
-  for (let i = 2; cfg.profiles[name] && usable(cfg.profiles[name]); i++) name = `${base}${i}`
+  // A profile that has no key yet is replaced in place instead of getting a "2" twin; so is a subscription.
+  for (let i = 2; !preset?.subscription && cfg.profiles[name] && usable(cfg.profiles[name]); i++) name = `${base}${i}`
   cfg = { ...cfg, profiles: { ...cfg.profiles, [name]: profile }, activeProfile: name }
   demo = false
   persist()
@@ -733,6 +771,7 @@ function registerIpc() {
   })
 
   ipcMain.handle('profile:add', (_e, req: AddProfileRequest) => addProfile(req))
+  ipcMain.handle('subscription:status', () => Promise.all((['claude-code', 'codex'] as const).map((id) => detect(id))))
   ipcMain.handle('profile:use', (_e, name: string) => {
     if (!cfg.profiles[name]) return
     cfg = { ...cfg, activeProfile: name }

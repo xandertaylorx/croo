@@ -26,6 +26,8 @@ function claudePrice(model: string): { input: number; output: number } | null {
 
 /** What a model costs: your own numbers if you set them, free for a local server, a built-in Claude price, or unknown. */
 export function priceFor(p: Pick<Profile, 'type' | 'model' | 'baseUrl' | 'inputPerMTok' | 'outputPerMTok'>): Price | null {
+  // A subscription is a flat fee: there is no per-token cost to estimate.
+  if (p.type === 'claude-code' || p.type === 'codex') return null
   if (p.inputPerMTok !== undefined || p.outputPerMTok !== undefined) return { input: p.inputPerMTok ?? 0, output: p.outputPerMTok ?? 0, source: 'custom' }
   if (isLocalUrl(p.baseUrl)) return { input: 0, output: 0, source: 'local' }
   if (p.type === 'anthropic') {

@@ -5,7 +5,7 @@
 # Croo
 
 **A minimal desktop coding agent with a frog in it.**<br>
-Bring your own API key, or a local model. No accounts, no telemetry, no backend.
+Bring your own API key, a Claude or ChatGPT subscription, or a local model. No accounts, no telemetry, no backend.
 
 ![macOS](https://img.shields.io/badge/macOS-Windows%20next-5ed67e?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-5ed67e?style=flat-square)
@@ -112,7 +112,7 @@ When the model streams its reasoning (Claude, Gemini, and DeepSeek, Groq, OpenRo
 
 OpenAI, Anthropic, Google Gemini, or anything OpenAI-compatible: OpenRouter, Groq, Together, DeepSeek, Mistral, xAI, Ollama, LM Studio, llama.cpp, vLLM. **Settings** (`⌘,`) shows each provider as a card with its masked key, **Update** (verified before it is saved), and a model list.
 
-Keys are encrypted with the OS keychain before they are written to `~/.config/croo`. Chats live in `~/.local/share/croo`. The only network calls are to the provider you choose. Croo works with API keys and OpenAI-compatible endpoints. It does not use anyone's consumer-subscription logins.
+Keys are encrypted with the OS keychain before they are written to `~/.config/croo`. Chats live in `~/.local/share/croo`. The only network calls are to the provider you choose. Croo works with API keys and OpenAI-compatible endpoints. A Claude or ChatGPT subscription works by running the vendor's own CLI (`claude` or `codex`) that you have already signed in to: Croo never sees or stores that login, and the CLI runs the agent, so its tools and permission rules apply (Manual mode only reads, Auto edits files, Bypass allows everything). Extra or newer models can be added in `~/.local/share/croo/models.json`.
 
 ## Shortcuts
 

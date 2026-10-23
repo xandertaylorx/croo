@@ -1,4 +1,5 @@
 import { PRESETS, type Preset } from '../providers/presets.js'
+import { SUBSCRIPTIONS } from '../subscriptions/info.js'
 import { h, icon } from './dom.js'
 import { Frog } from './frog.js'
 import type { AppState, McpServerInfo, PermissionMode } from '../shared/ipc.js'
@@ -52,10 +53,49 @@ function providerSetup(done: () => void, cancel?: () => void): HTMLElement {
       h(
         'div',
         { class: 'provider-grid' },
-        PRESETS.map((p) => h('button', { class: 'provider', type: 'button', onClick: () => form(p) }, h('span', null, p.label.replace(/ \(.*\)/, '')), p.noKey ? h('small', null, 'local') : null)),
+        PRESETS.map((p) => h('button', { class: 'provider', type: 'button', onClick: () => (p.subscription ? subscription(p) : form(p)) }, h('span', null, p.label.replace(/ \(.*\)/, '')), p.subscription ? h('small', null, 'no key') : p.noKey ? h('small', null, 'local') : null)),
         h('button', { class: 'provider', type: 'button', onClick: () => form('custom') }, h('span', null, 'Other…'), h('small', null, 'any OpenAI-compatible URL')),
       ),
       ...(cancel ? [h('div', { class: 'setup-actions' }, h('button', { class: 'btn ghost', type: 'button', onClick: cancel }, 'Cancel'))] : []),
+    )
+  }
+
+  /** Sign in with a subscription: the CLI you already use runs the agent, so there is nothing to paste. */
+  const subscription = (p: Preset) => {
+    const info = SUBSCRIPTIONS[p.type as 'claude-code' | 'codex']
+    const status = h('p', { class: 'sub-status' }, h('span', { class: 'spinner' }), 'Checking…')
+    const error = h('p', { class: 'form-error', role: 'alert' })
+    const go = h('button', { class: 'btn primary', type: 'submit', disabled: true }, 'Use my subscription')
+    const refresh = async () => {
+      const st = (await croo.subscriptionStatus()).find((x) => x.id === p.type)
+      const ok = !!st?.signedIn
+      status.className = `sub-status ${ok ? 'ok' : 'bad'}`
+      status.replaceChildren(icon(ok ? 'check' : 'x', 14), h('span', null, ok ? `${info.binary}${st?.version ? ` ${st.version}` : ''} is installed and signed in${st?.account ? ` (${st.account})` : ''}.` : (st?.problem ?? 'Could not check.')))
+      go.disabled = !ok
+    }
+    void refresh()
+    root.replaceChildren(
+      h(
+        'form',
+        {
+          class: 'setup-form',
+          onSubmit: async (e: Event) => {
+            e.preventDefault()
+            go.disabled = true
+            go.textContent = 'Connecting…'
+            const res = await croo.addProfile({ presetId: p.id })
+            if (res.ok) return done()
+            error.textContent = res.error
+            go.disabled = false
+            go.textContent = 'Use my subscription'
+          },
+        },
+        h('div', { class: 'setup-title' }, info.label),
+        h('small', null, `Runs the ${info.binary} command with your ${info.plan} plan. No API key: usage counts against your plan, and Croo never sees your login.`),
+        status,
+        error,
+        h('div', { class: 'setup-actions' }, h('button', { class: 'btn ghost', type: 'button', onClick: pick }, 'Back'), h('button', { class: 'btn ghost', type: 'button', onClick: () => void refresh() }, 'Check again'), go),
+      ),
     )
   }
 
@@ -116,10 +156,10 @@ export function renderOnboarding(root: HTMLElement) {
         { class: 'onboarding-body' },
         new Frog(168).el,
         h('h1', null, 'Welcome to Croo'),
-        h('p', { class: 'lede' }, 'A small coding agent with a frog in it. Bring your own API key or a local model. No account, no telemetry.'),
+        h('p', { class: 'lede' }, 'A small coding agent with a frog in it. Bring your own API key, a Claude or ChatGPT subscription, or a local model. No account, no telemetry.'),
         store.state.configError ? h('p', { class: 'form-error' }, store.state.configError) : null,
         h('div', { class: 'hero-local' }, h('h2', null, 'Start free, on this Mac'), localCards()),
-        h('p', { class: 'or-line' }, 'or use your own key'),
+        h('p', { class: 'or-line' }, 'or connect a provider'),
         providerSetup(() => {}),
         h('button', { class: 'link', type: 'button', onClick: () => void croo.startDemo() }, 'Just look around (demo, no key)'),
       ),
@@ -238,7 +278,12 @@ export function openSettings() {
         h('button', { class: 'icon-btn small danger', type: 'button', title: 'Remove provider', onClick: () => (panels.delete(p.name), void croo.removeProfile(p.name)) }, icon('trash', 14)),
       ),
       h('div', { class: 'pcard-row' }, h('span', { class: 'pcard-label' }, 'Model'), h('span', { class: 'mono pcard-val' }, p.model), h('button', { class: `btn small ${open === 'models' ? 'on' : ''}`, type: 'button', disabled: !p.hasKey, onClick: () => toggle('models') }, 'Change')),
-      h(
+      ...(p.subscription
+        ? [
+            h('div', { class: 'pcard-row' }, h('span', { class: 'pcard-label' }, 'Sign-in'), h('span', { class: 'pcard-val' }, `Your ${p.subscription === 'codex' ? 'codex' : 'claude'} login`, h('em', null, ` · change it with ${SUBSCRIPTIONS[p.subscription].login}`))),
+            h('div', { class: 'pcard-row' }, h('span', { class: 'pcard-label' }, 'Price'), h('span', { class: 'pcard-val' }, 'Included in your plan', h('em', null, ' · counts against its usage limits'))),
+          ]
+        : [h(
         'div',
         { class: 'pcard-row' },
         h('span', { class: 'pcard-label' }, 'API key'),
@@ -253,9 +298,9 @@ export function openSettings() {
         h('span', { class: 'pcard-label' }, 'Price'),
         h('span', { class: 'pcard-val' }, p.price ? (p.price.source === 'local' ? 'Free (local server)' : `$${p.price.input} in · $${p.price.output} out per 1M tokens`) : 'Unknown', p.price && p.price.source !== 'local' ? h('em', null, p.price.source === 'custom' ? ' · yours' : ' · list price') : null),
         h('button', { class: `btn small ${open === 'price' ? 'on' : ''}`, type: 'button', onClick: () => toggle('price') }, p.price?.source === 'custom' ? 'Edit' : 'Set'),
-      ),
-      open === 'key' ? keyForm(p.name, () => (panels.delete(p.name), paint())) : null,
-      open === 'price' ? priceForm(p, () => (panels.delete(p.name), paint())) : null,
+      )]),
+      open === 'key' && !p.subscription ? keyForm(p.name, () => (panels.delete(p.name), paint())) : null,
+      open === 'price' && !p.subscription ? priceForm(p, () => (panels.delete(p.name), paint())) : null,
       open === 'models' ? h('div', { class: 'pcard-models' }, modelList({ profile: p.name, current: p.model, autofocus: true, onPick: (id) => void croo.setModel(p.name, id) })) : null,
     )
   }

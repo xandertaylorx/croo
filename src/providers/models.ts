@@ -1,5 +1,6 @@
 import { DEFAULT_BASE_URLS, resolveApiKey } from '../config.js'
 import type { Profile } from '../types.js'
+import { detect, isSubscription, subscriptionModels } from '../subscriptions/index.js'
 
 export interface ProfileCheck {
   model: string
@@ -15,6 +16,7 @@ const NOT_CHAT = /whisper|tts|guard|embed|moderation|image|dall|audio|transcri|r
  * Network failures to a hosted provider are not treated as errors (you may just be offline).
  */
 export async function checkProfile(profile: Profile): Promise<ProfileCheck> {
+  if (isSubscription(profile.type)) return { model: profile.model, error: (await detect(profile.type)).problem }
   const key = resolveApiKey(profile)
   const timeout = AbortSignal.timeout(6000)
   try {
@@ -51,6 +53,8 @@ export interface ModelInfo {
 
 /** The chat models this key can use, newest first where the provider says so. */
 export async function listModels(profile: Profile): Promise<{ models: ModelInfo[]; error?: string }> {
+  // A subscription has no models endpoint: the bundled list (plus the user's models.json) is the list.
+  if (isSubscription(profile.type)) return { models: subscriptionModels(profile.type).filter((m) => m.status === 'current' || m.id === profile.model).map((m) => ({ id: m.id, name: m.name })) }
   const key = resolveApiKey(profile)
   const signal = AbortSignal.timeout(8000)
   try {

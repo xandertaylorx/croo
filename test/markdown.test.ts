@@ -3,6 +3,11 @@ import { renderMarkdown } from '../src/renderer/markdown.js'
 import { highlightLines } from '../src/renderer/highlight.js'
 
 describe('renderMarkdown', () => {
+  it('bolds a code span and keeps asterisks inside code literal', () => {
+    expect(renderMarkdown('**`src/a.ts:18`**: renamed')).toContain('<strong><code>src/a.ts:18</code></strong>: renamed')
+    expect(renderMarkdown('`a * b * c` and *em*')).toContain('<code>a * b * c</code> and <em>em</em>')
+    expect(renderMarkdown('`$x$` costs $5')).toContain('<code>$x$</code>')
+  })
   it('escapes html', () => {
     expect(renderMarkdown('<img src=x onerror=alert(1)>')).not.toContain('<img')
   })

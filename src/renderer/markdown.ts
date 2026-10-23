@@ -18,28 +18,26 @@ function tex(src: string, display: boolean): string {
 }
 
 function inline(raw: string): string {
-  return raw
-    .split(/(`[^`\n]+`)/g)
-    .map((part) => {
-      if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) return `<code>${esc(part.slice(1, -1))}</code>`
-      // Math is set aside first so markdown (underscores, asterisks) never touches the formulas.
-      const math: string[] = []
-      part = part.replace(MATH, (_all, a, b, c, d) => {
-        const display = a !== undefined || b !== undefined
-        math.push(tex(a ?? b ?? c ?? d, display))
-        return `\uE000${math.length - 1}\uE001`
-      })
-      return esc(part)
-        .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
-        .replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![*\w])/g, '$1<em>$2</em>')
-        .replace(/(^|[^_\w])_([^_\s][^_\n]*?)_(?![_\w])/g, '$1<em>$2</em>')
-        // Bare web addresses become links (the ones already inside an href follow a quote, so they are not matched).
-        .replace(/(^|[\s(])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>')
-        .replace(/\uE000(\d+)\uE001/g, (_m, n) => math[Number(n)])
-    })
-    .join('')
+  // Code spans are set aside first so nothing inside them is touched, and so **`bold code`** still pairs up.
+  const code: string[] = []
+  let part = raw.replace(/`([^`\n]+)`/g, (_all, c) => `\uE002${code.push(`<code>${esc(c)}</code>`) - 1}\uE003`)
+  // Math is set aside next so markdown (underscores, asterisks) never touches the formulas.
+  const math: string[] = []
+  part = part.replace(MATH, (_all, a, b, c, d) => {
+    const display = a !== undefined || b !== undefined
+    math.push(tex(a ?? b ?? c ?? d, display))
+    return `\uE000${math.length - 1}\uE001`
+  })
+  return esc(part)
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
+    .replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![*\w])/g, '$1<em>$2</em>')
+    .replace(/(^|[^_\w])_([^_\s][^_\n]*?)_(?![_\w])/g, '$1<em>$2</em>')
+    // Bare web addresses become links (the ones already inside an href follow a quote, so they are not matched).
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>')
+    .replace(/\uE000(\d+)\uE001/g, (_m, n) => math[Number(n)])
+    .replace(/\uE002(\d+)\uE003/g, (_m, n) => code[Number(n)])
 }
 
 const isTableSep = (l: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l) && l.includes('-')

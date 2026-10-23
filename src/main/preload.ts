@@ -50,6 +50,7 @@ const api: CrooApi = {
   stop: (chatId) => invoke('chat:stop', chatId),
   answer: (chatId, confirmId, answer) => invoke('chat:answer', chatId, confirmId, answer),
   addProfile: (req) => invoke('profile:add', req),
+  subscriptionStatus: () => invoke('subscription:status'),
   useProfile: (name) => invoke('profile:use', name),
   removeProfile: (name) => invoke('profile:remove', name),
   startDemo: () => invoke('demo:start'),

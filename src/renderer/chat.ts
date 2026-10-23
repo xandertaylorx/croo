@@ -5,7 +5,8 @@ import { renderMarkdown } from './markdown.js'
 import { renderCard } from './cards.js'
 import { openModelMenu } from './models.js'
 import { clampEffort, type Effort } from '../effort.js'
-import { refreshFiles, refreshGit } from './side.js'
+import { openFileInPanel, refreshFiles, refreshGit } from './side.js'
+import { changedFiles, countable, groupable, summarize } from './worklog.js'
 import { appendOutput, cleanShell, elapsed } from './run.js'
 import type { Attachment, AttachmentView, RunKind } from '../shared/ipc.js'
 import { attachmentsFromFiles, shrinkImage } from './attach.js'
@@ -24,6 +25,7 @@ const VERBS: Record<string, [string, string, IconName]> = {
   bash: ['Running', 'Ran', 'terminal'],
   multi_edit: ['Editing', 'Edited', 'pencil'],
   web_fetch: ['Fetching', 'Fetched', 'globe'],
+  web_search: ['Searching the web for', 'Searched the web for', 'globe'],
   todo_write: ['Planning', 'Plan', 'check'],
   remember: ['Remembering', 'Remembered', 'sparkle'],
   bash_output: ['Reading output of', 'Read output of', 'terminal'],
@@ -79,10 +81,21 @@ interface Mounted {
   tasks: HTMLElement
   hero: HTMLElement | null
   stick: boolean
+  /** Runs of tool calls and reasoning, each folded under a one-line summary. */
+  groups: Group[]
+}
+
+interface Group {
+  el: HTMLElement
+  head: HTMLButtonElement
+  body: HTMLElement
+  items: Item[]
 }
 
 let m: Mounted | null = null
 const open = new WeakSet<Item>()
+/** A group the user opened or closed by hand; otherwise it is open while it is the work in progress. */
+const groupChoice = new WeakMap<HTMLElement, boolean>()
 const dirty = new Set<Item>()
 const started = new WeakMap<Item, number>()
 let raf = 0
@@ -125,7 +138,7 @@ function renderItem(item: Item): HTMLElement {
     case 'assistant':
       return h(
         'div',
-        { class: 'msg assistant' },
+        { class: `msg assistant${item.commentary ? ' commentary' : ''}` },
         h('div', { class: 'md', html: renderMarkdown(item.text) }),
         sourcesRow(item),
         h('div', { class: 'msg-foot' }, h('button', { class: 'icon-btn small copy-reply', type: 'button', title: 'Copy reply', onClick: (e: Event) => copyReply(e.currentTarget as HTMLElement, item.text) }, icon('copy', 13)), item.meta ? h('span', { class: 'msg-meta' }, item.meta) : null),
@@ -140,7 +153,22 @@ function renderItem(item: Item): HTMLElement {
       return renderTool(item)
     case 'confirm':
       return renderConfirm(item)
+    case 'changes':
+      return renderChanges(item)
   }
+}
+
+/** "Changed 3 files": what the turn touched, one click from each file. */
+function renderChanges(item: Extract<Item, { kind: 'changes' }>): HTMLElement {
+  const { files } = item
+  const shown = files.slice(0, 8)
+  return h(
+    'div',
+    { class: 'changes' },
+    h('div', { class: 'changes-head' }, icon('pencil', 13), h('span', null, `Changed ${files.length} file${files.length === 1 ? '' : 's'}`), h('button', { class: 'link-btn', type: 'button', onClick: () => bus.git() }, 'Review changes')),
+    ...shown.map((f) => h('button', { class: 'changes-file', type: 'button', title: f, onClick: () => void openFileInPanel(f) }, f)),
+    files.length > shown.length ? h('div', { class: 'changes-more' }, `and ${files.length - shown.length} more`) : null,
+  )
 }
 
 const fmtSize = (n?: number) => (n === undefined ? '' : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
@@ -408,6 +436,14 @@ function sourcesRow(item: Extract<Item, { kind: 'assistant' }>): HTMLElement | n
   )
 }
 
+/** Under a coding turn's last reply: which files it changed. */
+function showChanges(v: ChatView) {
+  if (v.kind !== 'code') return
+  const lastUser = v.items.map((i) => i.kind).lastIndexOf('user')
+  const files = changedFiles(v.items.slice(lastUser + 1))
+  if (files.length) push(v, { kind: 'changes', files })
+}
+
 /** Put the model, time and cost of the turn under its last reply. */
 function stampReply(v: ChatView, seconds: number) {
   const lastUser = v.items.map((i) => i.kind).lastIndexOf('user')
@@ -643,11 +679,80 @@ function push(v: ChatView, item: Item) {
   if (m?.view !== v) return
   m.hero?.remove()
   m.hero = null
-  const el = renderItem(item)
-  el.classList.add('enter')
-  m.els.set(item, el)
-  m.thread.insertBefore(el, m.status)
+  mount(item).classList.add('enter')
   follow()
+}
+
+/**
+ * Put an item in the thread. Tool calls and reasoning that follow each other share one group; a message
+ * before more work is marked as commentary so only the last reply of a turn carries the copy button.
+ */
+function mount(item: Item): HTMLElement {
+  const t = m!
+  const el = renderItem(item)
+  t.els.set(item, el)
+  const last = t.status.previousElementSibling as HTMLElement | null
+  if (groupable(item)) {
+    let g = t.groups.find((x) => x.el === last)
+    if (!g) {
+      const head = h('button', { class: 'work-head', type: 'button', onClick: () => toggleGroup(g!) })
+      const body = h('div', { class: 'work-body' })
+      g = { el: h('div', { class: 'work' }, head, body), head, body, items: [] }
+      t.groups.push(g)
+      t.thread.insertBefore(g.el, t.status)
+    }
+    g.body.append(el)
+    g.items.push(item)
+    paintGroup(g)
+    const prev = t.view.items[t.view.items.indexOf(item) - 1]
+    if (prev?.kind === 'assistant' && !prev.commentary) {
+      prev.commentary = true
+      t.els.get(prev)?.classList.add('commentary')
+    }
+  } else {
+    t.thread.insertBefore(el, t.status)
+    const g = t.groups.find((x) => x.el === last)
+    if (g) paintGroup(g)
+  }
+  return el
+}
+
+const groupOpen = (g: Group) => {
+  const choice = groupChoice.get(g.el)
+  if (choice !== undefined) return choice
+  // Open while it is the latest thing in a turn that is still running; folded away once the reply follows.
+  return !!m && running(m.view) && m.status.previousElementSibling === g.el
+}
+
+function toggleGroup(g: Group) {
+  groupChoice.set(g.el, !groupOpen(g))
+  paintGroup(g)
+}
+
+function paintGroup(g: Group) {
+  const tools = countable(g.items)
+  const steps = tools.length + g.items.filter((i) => i.kind === 'thinking').length
+  const { text, failed } = summarize(g.items)
+  const live = tools.some((t) => t.status === 'running') || g.items.some((i) => i.kind === 'thinking' && !i.done)
+  // A single tool call needs no summary: it is just the row itself.
+  const solo = tools.length < 2
+  g.el.classList.toggle('solo', solo)
+  g.el.hidden = steps === 0
+  const openNow = solo || groupOpen(g)
+  g.el.classList.toggle('folded', !openNow)
+  g.body.hidden = !openNow
+  g.head.setAttribute('aria-expanded', String(openNow))
+  g.head.replaceChildren(
+    icon('chevron', 12),
+    h('span', { class: 'work-text' }, text),
+    ...(failed ? [h('span', { class: 'work-fail' }, `${failed} failed`)] : []),
+    ...(live ? [h('span', { class: 'spinner' })] : []),
+  )
+}
+
+/** After a turn ends, fold every group except those the user opened. */
+function paintGroups() {
+  for (const g of m?.groups ?? []) paintGroup(g)
 }
 
 function remove(item: Item) {
@@ -656,6 +761,12 @@ function remove(item: Item) {
   if (i >= 0) m.view.items.splice(i, 1)
   m.els.get(item)?.remove()
   m.els.delete(item)
+  const g = m.groups.find((x) => x.items.includes(item))
+  if (g) {
+    g.items.splice(g.items.indexOf(item), 1)
+    if (g.items.length) paintGroup(g)
+    else (g.el.remove(), m.groups.splice(m.groups.indexOf(g), 1))
+  }
 }
 
 function touch(item: Item) {
@@ -665,6 +776,8 @@ function touch(item: Item) {
   const el = renderItem(item)
   old.replaceWith(el)
   m.els.set(item, el)
+  const g = m.groups.find((x) => x.items.includes(item))
+  if (g) paintGroup(g)
   restoreRuns(el, m.view.id)
   follow()
 }
@@ -929,6 +1042,8 @@ export function handleEvent(ev: ChatEvent) {
       endThinking(v)
       stampReply(v, ev.seconds)
       setStatus(v, 'idle', '', ev.seconds >= 1 ? `Done in ${ev.seconds.toFixed(1)}s` : 'Done')
+      showChanges(v)
+      if (m?.view === v) paintGroups()
       flushQueue(v)
       break
     case 'cancelled':
@@ -937,6 +1052,7 @@ export function handleEvent(ev: ChatEvent) {
       endThinking(v)
       closeOpenConfirms(v)
       setStatus(v, 'idle', '', 'Stopped')
+      if (m?.view === v) paintGroups()
       break
     case 'error':
       v.queue = []
@@ -945,6 +1061,7 @@ export function handleEvent(ev: ChatEvent) {
       closeOpenConfirms(v)
       push(v, { kind: 'error', text: ev.message })
       setStatus(v, 'idle', '', 'Something went wrong')
+      if (m?.view === v) paintGroups()
       break
   }
 }
@@ -1196,7 +1313,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const tray = h('div', { class: 'attach-tray', hidden: true })
   const queue = h('div', { class: 'queue', hidden: true })
   const tasks = h('div', { class: 'tasks', hidden: true })
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, tasks, hero: null, stick: true }
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, tasks, hero: null, stick: true, groups: [] }
   const mounted = m
 
   input.value = view.draft
@@ -1278,12 +1395,8 @@ export function showChat(view: ChatView, root: HTMLElement) {
     )
     thread.append(mounted.hero)
   }
-  for (const item of view.items) {
-    const el = renderItem(item)
-    mounted.els.set(item, el)
-    thread.append(el)
-  }
   thread.append(status)
+  for (const item of view.items) mount(item)
   restoreRuns(thread, view.id)
 
   root.replaceChildren(

@@ -80,7 +80,8 @@ export interface Provider {
   chat(req: ChatRequest, onText: (delta: string) => void, onThinking?: (delta: string) => void): Promise<ChatResult>
 }
 
-export type ProviderType = 'openai' | 'anthropic' | 'gemini'
+/** `claude-code` and `codex` are subscriptions: the CLI you already signed in to runs the agent, so there is no API key. */
+export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'claude-code' | 'codex'
 
 export interface Profile {
   type: ProviderType

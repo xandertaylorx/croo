@@ -3,13 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Config, Profile, ProviderType } from './types.js'
 
-export const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
+export const DEFAULT_BASE_URLS: Record<'openai' | 'anthropic' | 'gemini', string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   gemini: 'https://generativelanguage.googleapis.com',
 }
 
-const ENV_KEYS: Record<ProviderType, string> = {
+const ENV_KEYS: Record<'openai' | 'anthropic' | 'gemini', string> = {
   openai: 'OPENAI_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   gemini: 'GEMINI_API_KEY',
@@ -52,7 +52,7 @@ export function loadConfig(file = configPath()): Config | null {
   if (typeof cfg.memory !== 'boolean') cfg.memory = true
   if (!['auto', 'low', 'medium', 'high', 'xhigh', 'max'].includes(cfg.effort)) cfg.effort = 'auto'
   for (const [name, p] of Object.entries(cfg.profiles)) {
-    if (!p || !['openai', 'anthropic', 'gemini'].includes(p.type) || !p.model) {
+    if (!p || !['openai', 'anthropic', 'gemini', 'claude-code', 'codex'].includes(p.type) || !p.model) {
       throw new Error(`Profile "${name}" in ${file} needs a valid "type" and "model".`)
     }
   }
@@ -71,6 +71,8 @@ export function saveConfig(cfg: Config, file = configPath()): void {
 
 /** Key priority: profile.apiKey, CROO_API_KEY, then the provider's conventional env var. */
 export function resolveApiKey(profile: Profile, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  // A subscription signs in through its own CLI and never sees a key.
+  if (profile.type === 'claude-code' || profile.type === 'codex') return undefined
   return profile.apiKey || env.CROO_API_KEY || env[ENV_KEYS[profile.type]] || undefined
 }
 

@@ -4,8 +4,11 @@ import { anthropicProvider } from './anthropic.js'
 import { geminiProvider } from './gemini.js'
 import { openaiProvider } from './openai.js'
 import { responsesProvider, usesResponses } from './responses.js'
+import { isSubscription, subscriptionProvider } from '../subscriptions/index.js'
 
 export function createProvider(profile: Profile, env: NodeJS.ProcessEnv = process.env): Provider {
+  // A subscription runs through its CLI: this is only the small side jobs (commit messages, summaries).
+  if (isSubscription(profile.type)) return subscriptionProvider(profile.type, profile.model)
   const key = resolveApiKey(profile, env)
   // Local OpenAI-compatible servers (Ollama, LM Studio, ...) usually need no key.
   if (!key && !(profile.type === 'openai' && isLocalUrl(profile.baseUrl))) {
