@@ -148,40 +148,25 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .pill:hover { background: var(--soft); }
 .small-btn { height: 32px; padding: 0 12px; font-size: 13px; }
 
-/* hero: centered, on a faint grid, with tiles floating around the headline */
-.hero { position: relative; padding-top: 112px; overflow: hidden; }
-.grid-bg {
-  position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 56px 56px; background-position: center top;
-  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 28%, #000 25%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 62% at 50% 28%, #000 25%, transparent 75%);
-}
-.hero-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }
-h1 { max-width: 15ch; font: 600 clamp(42px, 7vw, 76px) / 1.02 var(--display); letter-spacing: -0.04em; text-wrap: balance; }
+/* hero: headline left, the pitch and the buttons right, the app below */
+.hero { position: relative; padding-top: 88px; }
+.hero-inner { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 64px; align-items: end; }
+.hero-head .frog.big { margin: 0 0 30px; }
+.hero-side { padding-bottom: 8px; }
+h1 { max-width: 11ch; font: 600 clamp(44px, 6.6vw, 84px) / 1 var(--display); letter-spacing: -0.045em; text-wrap: balance; }
 .lede { max-width: 580px; margin-top: 24px; color: var(--text-2); font-size: clamp(16px, 2vw, 18px); line-height: 1.6; text-wrap: pretty; }
-.hero-inner .lede { margin-inline: auto; }
-.cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 36px; }
+.hero-side .lede { margin-top: 0; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 .btn.big { height: 46px; padding: 0 22px; border-radius: 10px; font-size: 15px; }
-.install { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 520px; margin-top: 28px; padding: 5px 5px 5px 16px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, transparent); text-align: left; }
+.install { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; margin-top: 18px; padding: 5px 5px 5px 16px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, transparent); text-align: left; }
 .install-cmd { display: flex; gap: 10px; flex: 1; min-width: 0; font-size: 13px; color: var(--text-2); }
 .install-cmd code { min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .install-cmd code::-webkit-scrollbar { display: none; }
 .prompt { flex: none; color: var(--text-3); font-family: var(--mono); user-select: none; }
-.meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; color: var(--text-3); font-size: 13px; font-family: var(--mono); }
-.tile { position: absolute; z-index: 1; display: grid; place-items: center; width: 64px; height: 64px; border: 1px solid var(--line-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); animation: float 7s ease-in-out infinite; }
-.tile svg { width: 28px; height: 28px; fill: none; stroke: var(--text-2); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.tile .frog { width: 34px; height: auto; fill: none; stroke: none; }
-.t1 { top: 200px; left: 11%; transform: rotate(-9deg); }
-.t2 { top: 72px; left: 21%; animation-delay: -2s; transform: rotate(6deg); }
-.t3 { top: 400px; left: 7%; animation-delay: -4s; transform: rotate(7deg); }
-.t4 { top: 170px; right: 11%; animation-delay: -1s; transform: rotate(8deg); }
-.t5 { top: 400px; right: 7%; animation-delay: -3s; transform: rotate(-7deg); }
-.t6 { top: 72px; right: 22%; animation-delay: -5s; transform: rotate(-5deg); }
-@keyframes float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; color: var(--text-3); font-size: 13px; font-family: var(--mono); }
 
 /* the real app, captured from its own code, scaled to fit */
-.hero-shot { position: relative; z-index: 1; margin-top: 72px; }
+.hero-shot { position: relative; margin-top: 64px; }
 .app { position: relative; margin: 0; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
 .app-view { position: relative; width: 100%; height: calc(var(--ah, 560px)); overflow: hidden; }
 .app-view iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: var(--bg); color-scheme: light dark; }
@@ -193,8 +178,9 @@ h1 { max-width: 15ch; font: 600 clamp(42px, 7vw, 76px) / 1.02 var(--display); le
 .app-side .lights { display: none; }
 
 /* proof strip */
-.strip { margin-top: 96px; border-block: 1px solid var(--line); background: color-mix(in srgb, var(--soft) 55%, transparent); }
-.strip-inner { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding-block: 26px; color: var(--text-2); font-size: 14px; line-height: 1.45; }
+.strip { margin-top: 56px; }
+.strip-inner { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; padding-block: 0; color: var(--text-3); font-size: 14px; line-height: 1.5; }
+.strip-inner span { padding-left: 14px; border-left: 2px solid var(--frog); }
 .strip b { display: block; color: var(--text); font-weight: 600; }
 
 /* split sections */
@@ -216,13 +202,9 @@ h1 { max-width: 15ch; font: 600 clamp(42px, 7vw, 76px) / 1.02 var(--display); le
 /* open source */
 .open { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 64px; align-items: center; padding: 56px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
 .open .dl-row { margin-top: 28px; }
-.term { overflow: hidden; border: 1px solid #2c2b29; border-radius: 12px; background: #1b1a19; color: #d9d7d2; box-shadow: var(--shadow); }
-.term-bar { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-bottom: 1px solid #2c2b29; color: #7d7b76; font: 12px var(--mono); }
-.term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3936; }
-.term-bar span { margin-left: 8px; }
-.term pre { margin: 0; padding: 20px 22px 24px; overflow-x: auto; font: 13px/1.85 var(--mono); }
-.term .p { color: #5ed67e; user-select: none; }
-.term .c { color: #7d7b76; }
+.code-panel { margin: 0; padding: 26px 28px; overflow-x: auto; border-left: 3px solid var(--frog); background: var(--soft); border-radius: 0 12px 12px 0; color: var(--text-2); font: 13.5px/1.9 var(--mono); }
+.code-panel .p { color: var(--text); font-weight: 600; }
+.code-panel .c { color: var(--text-3); }
 
 /* closing call to action */
 .cta-final { text-align: center; }
@@ -235,10 +217,8 @@ h1 { max-width: 15ch; font: 600 clamp(42px, 7vw, 76px) / 1.02 var(--display); le
 .ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 48px; }
 .way.wide { grid-column: 1 / -1; }
 
-@media (max-width: 1100px) {
-  .tile { display: none; }
-}
 @media (max-width: 960px) {
+  .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .features { grid-template-columns: 1fr; }
   .split, .split.flip { grid-template-columns: 1fr; gap: 40px; }
   .split.flip .app { order: 2; }
@@ -250,10 +230,10 @@ h1 { max-width: 15ch; font: 600 clamp(42px, 7vw, 76px) / 1.02 var(--display); le
   .wrap, .wrap-wide { padding: 0 16px; }
   .hide-sm { display: none; }
   .nav nav { gap: 12px; }
-  .hero { padding-top: 64px; }
+  .hero { padding-top: 48px; }
+  .hero-inner { gap: 28px; }
   .hero-shot { margin-top: 48px; }
-  .btn.big { width: 100%; justify-content: center; }
-  .cta { width: 100%; }
+  .btn.big { flex: 1; justify-content: center; }
   .features > div { grid-template-columns: 1fr; gap: 6px; padding: 18px 0; }
   .section { padding-top: 96px; }
   .strip { margin-top: 40px; }
@@ -267,7 +247,7 @@ h1 { max-width: 15ch; font: 600 clamp(42px, 7vw, 76px) / 1.02 var(--display); le
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .frog .eye, .frog .hop, .tile { animation: none; }
+  .frog .eye, .frog .hop { animation: none; }
   .btn { transition: none; }
 }
 
