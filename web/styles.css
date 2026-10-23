@@ -186,6 +186,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .foot-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-top: 28px; padding-bottom: 40px; color: var(--text-3); font-size: 14px; }
 .foot nav { display: flex; flex-wrap: wrap; gap: 22px; }
 .foot nav a:hover { color: var(--text); }
+.foot-badge { display: inline-flex; }
+.foot-badge img { display: block; height: 54px; width: auto; }
 
 @media (max-width: 960px) {
   .features { grid-template-columns: 1fr; }
