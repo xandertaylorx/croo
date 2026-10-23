@@ -23,6 +23,10 @@ Bring your own API key, or a local model. No accounts, no telemetry, no backend.
 
 **Code** mode gives each project folder its own chats and lets the agent read, search, edit and run things in it. **Chat** mode is a plain conversation with no folder and no tools. You decide how much the agent may do on its own, and everything it does is visible: diffs, commands, output, reasoning, time and tokens.
 
+## What’s new in 0.19.0
+
+Chat mode answers with **cards**: a calculator, the **weather**, **maps** for places and routes, **live flights**, conversions, world clocks and **charts**. Only what you ask about is looked up, on free public services; see the [changelog](CHANGELOG.md).
+
 ## What’s new in 0.18.0
 
 Chat mode can now **read web pages**, and replies written from them list their **sources** as clickable chips with each site's own icon.
@@ -128,8 +132,8 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 Update `CHANGELOG.md` and `README.md`, bump the version in `package.json` and `package-lock.json` with `npm version <version> --no-git-tag-version`, and commit. Push the commit and matching version tag; GitHub Actions checks types, runs tests, builds the macOS app and attaches the installers to a GitHub Release:
 
 ```bash
-git tag v0.18.0
-git push origin main v0.18.0
+git tag v0.19.0
+git push origin main v0.19.0
 ```
 
 The app checks the latest release on launch and every few hours and shows "Croo x.y.z is out" at the bottom left; clicking **Update and restart** downloads the update, shows download and install progress, replaces Croo and relaunches it. If Croo cannot write to its app folder, the button says so and you download the update yourself. Builds are unsigned and not notarized (see `.github/workflows/release.yml`); use the one-line installer above, or run `xattr -cr /Applications/Croo.app` after a manual download if macOS reports the app as “damaged”.

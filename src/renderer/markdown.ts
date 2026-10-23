@@ -1,6 +1,7 @@
 import { highlight } from './highlight.js'
 import katex from 'katex'
 import { runKind } from './run.js'
+import { renderChart } from './chart.js'
 
 /** Small markdown → HTML renderer for chat replies. Everything is escaped first; only known tags are emitted. */
 
@@ -58,8 +59,21 @@ export function renderMarkdown(src: string): string {
       const body: string[] = []
       i++
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++])
+      const closed = i < lines.length
       i++ // closing fence (a streaming reply may not have one yet)
       const lang = fence[2]
+      if (lang === 'chart') {
+        const svg = renderChart(body.join('\n'))
+        if (svg) {
+          out.push(svg)
+          continue
+        }
+        // Half-written JSON while the reply streams: wait quietly; if the fence closed and it still is not a chart, show it as code.
+        if (!closed) {
+          out.push('<div class="chart-wait">Drawing chart…</div>')
+          continue
+        }
+      }
       const kind = runKind(lang)
       const run = kind
         ? `<button class="code-run" type="button" data-kind="${kind}"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><span>Run</span></button>`

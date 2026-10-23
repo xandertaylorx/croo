@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.0
+
+Chat mode gets tools that answer with a card instead of a paragraph.
+
+- **Calculator**: ask for a calculation and Croo works it out exactly (percentages, powers, roots, trigonometry, factorials) and shows a neat result card instead of doing sums in its head. It is a small built-in parser, not `eval`
+- **Weather**: ask about the weather anywhere and get a card with the temperature, feels-like, humidity, wind, the next 24 hours and a 7-day forecast, tinted for sun, cloud, rain, snow, storm or night. Celsius or Fahrenheit to suit you
+- **Places and maps**: ask where something is and Croo pins it on a real map. Several matches get numbered pins
+- **Routes**: ask how far or how long it takes to get somewhere by car, bike or on foot and see the route on a map with distance and time (no live traffic, no flights or public transport)
+- **Live flights**: track an aircraft by callsign (BAW123) or see what is flying near a place, with its position, altitude, speed and the path so far
+- **Conversions and clocks**: units offline (length, mass, volume, speed, area, time, data, temperature), currencies at the latest European Central Bank rates, and the local time in any city with how far ahead or behind you it is
+- **Charts**: bar, line, area, pie and donut charts. Ask for one, or Croo will draw one when numbers are easier to compare as a picture. They follow light and dark mode and show values on hover
+- Cards are saved with the chat, so they are still there when you reopen it
+- Only the place, callsign or currency you ask about goes out, to Open-Meteo (weather), OpenStreetMap (places, routes, map tiles), OpenSky (flights) and Frankfurter (currencies). No keys or accounts, and nothing is sent unless you ask
+
 ## 0.18.0
 
 - **Web pages in Chat mode**: plain chats can now read a web page too. Give Croo a link, or ask about something current, and it fetches the page (asking first, like in Code mode, with Allow always on the card). To search, it fetches a results page and opens the best hits

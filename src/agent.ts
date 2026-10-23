@@ -1,3 +1,4 @@
+import type { Card } from './shared/ipc.js'
 import type { ImageAtt, Msg, Provider, ToolCall, Usage } from './types.js'
 import { TOOLS, readOnlyBash, safePath, toolByName, truncate, type Preview, type Tool, type ToolContext } from './tools/index.js'
 import { Permissions } from './permissions.js'
@@ -13,7 +14,7 @@ export interface AgentHooks {
   onReasoning?(delta: string): void
   onTextEnd(): void
   onToolRunning(name: string, summary: string): void
-  onToolDone(name: string, summary: string, ok: boolean, result: string, images?: ImageAtt[]): void
+  onToolDone(name: string, summary: string, ok: boolean, result: string, images?: ImageAtt[], card?: Card): void
   confirm(name: string, preview: Preview): Promise<'y' | 'n' | 'a'>
   /** The user approved the plan: plan mode has ended and the agent goes on in Auto mode. */
   onPlanApproved?(): void
@@ -266,10 +267,11 @@ async function execute(c: ToolCall, o: TurnOptions): Promise<Msg> {
     const out = await tool.run(c.args, ctx)
     let result = truncate(typeof out === 'string' ? out : out.text)
     const images = typeof out === 'string' ? undefined : out.images
+    const card = typeof out === 'string' ? undefined : out.card
     const feedback = o.lifecycle ? await o.lifecycle.postTool({ tool: c.name, args: c.args, result }) : ''
     if (feedback) result += `\n\nA PostToolUse hook reported:\n${feedback}`
-    hooks.onToolDone(c.name, summary, true, result, images)
-    return { ...toolMsg(c, result, false), ...(images?.length ? { images } : {}) } as Msg
+    hooks.onToolDone(c.name, summary, true, result, images, card)
+    return { ...toolMsg(c, result, false), ...(images?.length ? { images } : {}), ...(card ? { card } : {}) } as Msg
   } catch (e: any) {
     const msg = e?.message ?? String(e)
     hooks.onToolDone(c.name, summary, false, msg)

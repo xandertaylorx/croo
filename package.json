@@ -1,7 +1,7 @@
 {
   "name": "croo",
   "productName": "Croo",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Croo: a minimal desktop AI coding agent with a frog in it. Bring your own API key.",
   "private": true,
   "type": "module",

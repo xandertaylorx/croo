@@ -2,6 +2,7 @@ import type { ChatEvent, Item, PreviewDto } from '../shared/ipc.js'
 import { h, icon, tildify, type IconName } from './dom.js'
 import { Frog, SAYINGS } from './frog.js'
 import { renderMarkdown } from './markdown.js'
+import { renderCard } from './cards.js'
 import { openModelMenu } from './models.js'
 import { clampEffort, type Effort } from '../effort.js'
 import { refreshFiles, refreshGit } from './side.js'
@@ -32,6 +33,13 @@ const VERBS: Record<string, [string, string, IconName]> = {
   skill: ['Loading skill', 'Loaded skill', 'sparkle'],
   propose_plan: ['Proposing plan', 'Proposed plan', 'map'],
   diagnostics: ['Checking', 'Checked', 'check'],
+  calculate: ['Calculating', 'Calculated', 'sparkle'],
+  weather: ['Checking the weather in', 'Weather in', 'globe'],
+  place: ['Looking up', 'Looked up', 'map'],
+  route: ['Routing', 'Routed', 'map'],
+  flight: ['Tracking', 'Tracked', 'globe'],
+  convert: ['Converting', 'Converted', 'refresh'],
+  time_in: ['Checking the time in', 'Time in', 'globe'],
 }
 const TITLES: Record<string, string> = {
   bash: 'Run this command?',
@@ -438,7 +446,7 @@ function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
     h('span', { class: 'tool-state' }, state),
   )
   const shot = item.image ? h('button', { class: 'tool-shot', type: 'button', title: 'Open screenshot', onClick: () => openLightbox({ name: 'Screenshot', kind: 'image', dataUrl: item.image }) }, h('img', { src: item.image, alt: 'Screenshot' })) : null
-  return h('div', { class: `tool ${item.status}` }, row, shot, open.has(item) && expandable ? h('pre', { class: 'tool-out' }, item.result) : null)
+  return h('div', { class: `tool ${item.status}` }, row, item.card ? renderCard(item.card) : null, shot, open.has(item) && expandable ? h('pre', { class: 'tool-out' }, item.result) : null)
 }
 
 function renderConfirm(item: Extract<Item, { kind: 'confirm' }>): HTMLElement {
@@ -880,8 +888,9 @@ export function handleEvent(ev: ChatEvent) {
         run.status = status
         run.result = ev.result
         run.image = ev.image
+        run.card = ev.card
         if (m?.view === v) touch(run)
-      } else push(v, { kind: 'tool', name: ev.name, summary: ev.summary, status, result: ev.result, image: ev.image })
+      } else push(v, { kind: 'tool', name: ev.name, summary: ev.summary, status, result: ev.result, image: ev.image, card: ev.card })
       if (ev.name === 'todo_write') {
         v.tasksOpen = undefined
         if (m?.view === v) paintTasks()

@@ -63,7 +63,7 @@ export function toItems(messages: Msg[]): Item[] {
         const r = results.get(c.id)
         const status = !r ? 'error' : r.content.startsWith('The user denied') ? 'denied' : r.isError ? 'error' : 'ok'
         const img = r?.images?.[0]
-        items.push({ kind: 'tool', name: c.name, summary, status, result: r ? clip(r.content) : 'Cancelled.', image: img ? `data:${img.mime};base64,${img.data}` : undefined })
+        items.push({ kind: 'tool', name: c.name, summary, status, result: r ? clip(r.content) : 'Cancelled.', image: img ? `data:${img.mime};base64,${img.data}` : undefined, card: r?.card })
       }
     }
   }

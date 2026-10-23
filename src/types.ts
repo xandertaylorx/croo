@@ -1,3 +1,5 @@
+import type { Card } from './shared/ipc.js'
+
 export interface ToolCall {
   id: string
   name: string
@@ -18,7 +20,7 @@ export type Msg = (
       auto?: boolean
     }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; thinking?: string; /** Provider data that must round-trip, e.g. Anthropic's signed thinking blocks. */ meta?: unknown }
-  | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean; /** e.g. a browser screenshot, for models that can see. */ images?: ImageAtt[] }
+  | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean; /** e.g. a browser screenshot, for models that can see. */ images?: ImageAtt[]; /** A visual for the chat (weather, map...), kept so the chat shows it again when reopened. */ card?: Card }
 ) & {
   /**
    * Set when the conversation was compacted: a summary of every message before this one. The model is sent

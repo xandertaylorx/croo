@@ -17,8 +17,8 @@ import { planTool, skillTool, taskTool } from '../tools/meta.js'
 import { killAllBackground } from '../tools/background.js'
 import { browserTool, closeAgentBrowser } from './agentbrowser.js'
 import { clearMemory, loadMemory, removeMemory } from '../memory.js'
-import { TOOLS, readOnlyBash, rememberTool, setExtraTools, webFetch, type Tool } from '../tools/index.js'
-import { favicon } from './favicon.js'
+import { CHAT_TOOLS, TOOLS, readOnlyBash, rememberTool, setExtraTools, webFetch, type Tool } from '../tools/index.js'
+import { favicon, tile } from './favicon.js'
 import { McpManager, parseMcpJson } from '../mcp.js'
 import { setRipgrepDir } from '../tools/rg.js'
 import { contextWindow } from '../compact.js'
@@ -401,7 +401,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
         permissions: rt.permissions,
         signal: ac.signal,
         effort: cfg.effort,
-        tools: plain ? (cfg.memory !== false ? [webFetch, rememberTool] : [webFetch]) : () => codeTools(rt, skills.length > 0),
+        tools: plain ? [webFetch, ...CHAT_TOOLS, ...(cfg.memory !== false ? [rememberTool] : [])] : () => codeTools(rt, skills.length > 0),
         contextWindow: window,
         beforeWrite: plain ? undefined : (abs) => rt.checkpoints.record(turn, session.cwd, abs),
         lifecycle,
@@ -412,10 +412,10 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
           onText: (delta) => emit({ chatId, type: 'text', delta }),
           onTextEnd: () => emit({ chatId, type: 'textEnd' }),
           onToolRunning: (name, summary) => emit({ chatId, type: 'toolRunning', name, summary }),
-          onToolDone: (name, summary, ok, result, images) => {
+          onToolDone: (name, summary, ok, result, images, card) => {
             if (name === 'remember') pushState()
             const img = images?.[0]
-            emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result), image: img ? `data:${img.mime};base64,${img.data}` : undefined })
+            emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result), image: img ? `data:${img.mime};base64,${img.data}` : undefined, card })
           },
           confirm: ask,
           onPlanApproved: () => {
@@ -923,6 +923,7 @@ function registerIpc() {
     return found.filter((p): p is number => p !== null)
   })
   ipcMain.handle('favicon:get', (_e, host: string) => favicon(String(host)))
+  ipcMain.handle('tile:get', (_e, z: number, x: number, y: number) => tile(Number(z), Number(x), Number(y)))
   ipcMain.handle('shell:open', (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })

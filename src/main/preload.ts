@@ -62,6 +62,7 @@ const api: CrooApi = {
   reveal: (cwd, rel) => invoke('fs:reveal', cwd, rel),
   openExternal: (url) => invoke('shell:open', url),
   favicon: (host) => invoke('favicon:get', host),
+  tile: (z, x, y) => invoke('tile:get', z, x, y),
   probePorts: () => invoke('browser:ports'),
   gitStatus: (cwd) => invoke('git:status', cwd),
   gitDiff: (cwd, file, untracked) => invoke('git:diff', cwd, file, untracked),

@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import type { ImageAtt, ToolSpec } from '../types.js'
+import type { Card } from '../shared/ipc.js'
+import { CHAT_TOOLS } from './chat.js'
 import { applyEdit } from './edit.js'
 import { addMemory } from '../memory.js'
 import { Ignore, globMatcher, walk } from './ignore.js'
@@ -28,7 +30,7 @@ export interface ToolContext {
 }
 
 /** What a tool returns: text, or text with images (e.g. a browser screenshot) for models that can see. */
-export type ToolOutput = string | { text: string; images?: ImageAtt[] }
+export type ToolOutput = string | { text: string; images?: ImageAtt[]; card?: Card }
 
 export interface Tool {
   spec: ToolSpec
@@ -506,5 +508,6 @@ export const TOOLS: Tool[] = [readFile, writeFile, editFile, multiEdit, listFile
 let extraTools: () => Tool[] = () => []
 /** Tools that come from elsewhere (MCP servers), so the chat can describe their calls too. */
 export const setExtraTools = (fn: () => Tool[]) => void (extraTools = fn)
-export const toolByName = (name: string) => [...TOOLS, rememberTool, ...extraTools()].find((t) => t.spec.name === name)
+export { CHAT_TOOLS }
+export const toolByName = (name: string) => [...TOOLS, rememberTool, ...CHAT_TOOLS, ...extraTools()].find((t) => t.spec.name === name)
 export { Ignore }

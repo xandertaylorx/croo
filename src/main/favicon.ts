@@ -25,3 +25,23 @@ export async function favicon(host: string): Promise<string | null> {
   cache.set(host, out)
   return out
 }
+
+const tiles = new Map<string, string | null>()
+
+/** One map tile from OpenStreetMap's public servers, cached for the session. */
+export async function tile(z: number, x: number, y: number): Promise<string | null> {
+  if (![z, x, y].every(Number.isInteger) || z < 1 || z > 18) return null
+  const n = 2 ** z
+  if (y < 0 || y >= n) return null
+  x = ((x % n) + n) % n
+  const key = `${z}/${x}/${y}`
+  if (tiles.has(key)) return tiles.get(key)!
+  let out: string | null = null
+  try {
+    const res = await fetch(`https://tile.openstreetmap.org/${key}.png`, { signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'Croo desktop app (https://github.com/xandertaylorx/croo)' } })
+    if (res.ok && (res.headers.get('content-type') ?? '').startsWith('image/')) out = `data:image/png;base64,${Buffer.from(await res.arrayBuffer()).toString('base64')}`
+  } catch {}
+  if (tiles.size > 500) tiles.delete(tiles.keys().next().value!)
+  if (out) tiles.set(key, out)
+  return out
+}
