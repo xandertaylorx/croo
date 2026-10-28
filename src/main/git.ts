@@ -26,7 +26,7 @@ export function git(cwd: string, args: string[], timeout = 30_000): Promise<Out>
 }
 
 /** Parse `git status --porcelain=v1 -z --branch`. */
-export function parseStatus(raw: string): Omit<GitStatus, 'repo' | 'remotes' | 'gh'> {
+export function parseStatus(raw: string): Omit<GitStatus, 'repo' | 'remotes' | 'gh' | 'hasCommits'> {
   const parts = raw.split('\0')
   let branch = ''
   let upstream: string | undefined
@@ -75,7 +75,7 @@ export function ghReady(): Promise<boolean> {
 
 export async function gitStatus(cwd: string): Promise<GitStatus> {
   const inside = await git(cwd, ['rev-parse', '--is-inside-work-tree'])
-  if (inside.code !== 0) return { repo: false, branch: '', ahead: 0, behind: 0, files: [], remotes: [], gh: false }
+  if (inside.code !== 0) return { repo: false, branch: '', ahead: 0, behind: 0, files: [], remotes: [], gh: false, hasCommits: false }
   const st = await git(cwd, ['status', '--porcelain=v1', '-z', '--branch', '--untracked-files=all'])
   const parsed = parseStatus(st.stdout)
   // Line counts per file against HEAD (not available before the first commit).
@@ -91,8 +91,20 @@ export async function gitStatus(cwd: string): Promise<GitStatus> {
       if (c) [f.add, f.del] = c
     }
   }
+  // New files are not in that diff: count their lines on their own (a few dozen at most, it is one git call each).
+  await Promise.all(
+    parsed.files
+      .filter((f) => f.index === '?')
+      .slice(0, 40)
+      .map(async (f) => {
+        const m = (await git(cwd, ['diff', '--no-index', '--numstat', '--', '/dev/null', f.path])).stdout.match(/^(\d+|-)\t/)
+        if (m) [f.add, f.del] = [Number(m[1]) || 0, 0]
+      }),
+  )
   const remotes = (await git(cwd, ['remote'])).stdout.split('\n').filter(Boolean)
-  return { repo: true, ...parsed, remotes, gh: remotes.length ? false : await ghReady() }
+  const hasCommits = (await git(cwd, ['rev-parse', '--verify', '-q', 'HEAD'])).code === 0
+  const head = remotes.length ? (await git(cwd, ['symbolic-ref', '--short', '-q', `refs/remotes/${remotes.includes('origin') ? 'origin' : remotes[0]}/HEAD`])).stdout.trim() : ''
+  return { repo: true, ...parsed, remotes, gh: await ghReady(), defaultBranch: head ? head.slice(head.indexOf('/') + 1) : undefined, hasCommits }
 }
 
 /** The change in one file against HEAD (staged and unstaged together). */
@@ -186,6 +198,32 @@ export async function gitPublish(cwd: string, name: string, isPrivate: boolean):
   const r = result(out, 'Created and pushed.')
   if (!r.ok && /already exists/i.test(r.output)) r.hint = 'A repository with that name already exists on your account. Pick another name, or paste its address instead.'
   return r
+}
+
+/** The pull request address gh printed, if any. */
+export const prUrl = (text: string) => text.match(/https:\/\/\S+\/pull\/\d+/)?.[0]
+
+/** Push the branch (setting its upstream the first time), then open a pull request filled from its commits. */
+export async function gitCreatePr(cwd: string): Promise<GitResult> {
+  if (!(await ghReady())) return { ok: false, output: '', hint: 'The GitHub CLI is not signed in. Run "gh auth login" in the terminal, then try again.' }
+  const st = await gitStatus(cwd)
+  if (!st.remotes.length) return { ok: false, output: '', hint: 'No remote is connected yet. Publish the folder first.' }
+  if (st.defaultBranch && st.branch === st.defaultBranch) return { ok: false, output: '', hint: `You are on ${st.branch}. Create a branch for this work first, then open the pull request from it.` }
+  if (!st.upstream || st.ahead > 0) {
+    const pushed = await gitPush(cwd, !!st.upstream)
+    if (!pushed.ok) return pushed
+  }
+  const out = await new Promise<Out>((resolve) => {
+    execFile('gh', ['pr', 'create', '--fill'], { cwd, timeout: 120_000, env: { ...process.env, GH_PROMPT_DISABLED: '1' } }, (err, stdout, stderr) =>
+      resolve({ code: err ? 1 : 0, stdout: String(stdout), stderr: String(stderr || (err ? err.message : '')) }),
+    )
+  })
+  const text = tail(out)
+  // gh refuses a second pull request for the branch, but says where the first one is: open that.
+  const url = prUrl(text)
+  if (out.code !== 0 && url && /already exists/i.test(text)) return { ok: true, output: 'A pull request for this branch is already open.', url }
+  const r = result(out, 'Pull request created.')
+  return { ...r, url: r.ok ? url : undefined }
 }
 
 export async function gitInit(cwd: string): Promise<GitResult> {

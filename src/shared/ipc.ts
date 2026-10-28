@@ -45,7 +45,7 @@ export type Card =
     }
 
 export type Item =
-  | { kind: 'user'; text: string; attachments?: AttachmentView[] }
+  | { kind: 'user'; text: string; attachments?: AttachmentView[]; /** How long the turn it started took. */ seconds?: number }
   /** `meta` is the model and cost of the turn this reply ended, shown quietly under it. */
   | { kind: 'assistant'; text: string; streaming?: boolean; meta?: string; /** Pages Croo read to write this reply. */ sources?: string[]; /** A message in the middle of the work (more tool calls follow it), not the final reply: no copy button or stats. */ commentary?: boolean }
   | { kind: 'thinking'; text: string; done: boolean; seconds?: number }
@@ -202,8 +202,12 @@ export interface GitStatus {
   files: GitFile[]
   /** Configured remotes; empty means pushing has nowhere to go yet. */
   remotes: string[]
-  /** The GitHub CLI is installed and signed in, so a repository can be created from here. */
+  /** The GitHub CLI is installed and signed in, so a repository or pull request can be created from here. */
   gh: boolean
+  /** The branch origin's HEAD points at (main, master...), when known. */
+  defaultBranch?: string
+  /** HEAD has at least one commit. */
+  hasCommits: boolean
 }
 
 export interface GitResult {
@@ -211,6 +215,16 @@ export interface GitResult {
   output: string
   /** A plain-language explanation and fix when git failed in a way we recognise. */
   hint?: string
+  /** A page to open, e.g. the pull request that was created. */
+  url?: string
+}
+
+/** A tool the agent can call in a chat, for the list behind the composer's tools button. */
+export interface ToolInfo {
+  name: string
+  description: string
+  /** The MCP server it comes from; built-in tools have none. */
+  server?: string
 }
 
 export interface RunExit {
@@ -236,6 +250,14 @@ export interface McpServerInfo {
 export interface ContextInfo {
   used: number
   window: number
+}
+
+/** Tokens a chat has used: input not served from cache, output, and the cached input read or written. */
+export interface TokenCount {
+  input: number
+  output: number
+  cacheRead?: number
+  cacheWrite?: number
 }
 
 export interface AppState {
@@ -305,7 +327,9 @@ export interface CrooApi {
   addWorkspace(): Promise<void>
   removeWorkspace(path: string): Promise<void>
   newChat(cwd: string, kind: ChatKind): Promise<string>
-  openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[]; context?: ContextInfo; checkpoints: number[] } | null>
+  openChat(id: string): Promise<{ cwd: string; kind: ChatKind; title: string; items: Item[]; context?: ContextInfo; checkpoints: number[]; usage?: TokenCount } | null>
+  /** What the agent can call in this chat right now (Plan mode narrows it). */
+  listTools(chatId: string): Promise<ToolInfo[]>
   deleteChat(id: string): Promise<void>
   send(chatId: string, text: string, attachments?: Attachment[]): Promise<Result>
   /** Cut the chat back to before the n-th user message (0-based) so it can be edited or sent again; optionally undo file changes since. */
@@ -386,6 +410,8 @@ export interface CrooApi {
   gitConnect(cwd: string, remote: string): Promise<GitResult>
   /** Create a GitHub repository with the gh CLI and push to it. */
   gitPublish(cwd: string, name: string, isPrivate: boolean): Promise<GitResult>
+  /** Push the branch if needed and open a pull request with the gh CLI. `url` is the pull request. */
+  gitCreatePr(cwd: string): Promise<GitResult>
   /** Run a snippet from the chat in the folder; output streams back through onRunData / onRunExit. */
   runCode(cwd: string, kind: RunKind, code: string): Promise<string>
   runStop(id: string): void

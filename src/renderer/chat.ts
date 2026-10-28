@@ -1,4 +1,4 @@
-import type { ChatEvent, Item, PreviewDto } from '../shared/ipc.js'
+import type { ChatEvent, Item, PreviewDto, ToolInfo } from '../shared/ipc.js'
 import { h, icon, tildify, type IconName } from './dom.js'
 import { Frog, SAYINGS } from './frog.js'
 import { renderMarkdown } from './markdown.js'
@@ -6,7 +6,8 @@ import { renderCard } from './cards.js'
 import { openModelMenu } from './models.js'
 import { clampEffort, type Effort } from '../effort.js'
 import { openFileInPanel, refreshFiles, refreshGit } from './side.js'
-import { changedFiles, countable, groupable, summarize } from './worklog.js'
+import { actionOf, activityKind, answerStart, changedFiles, countable, groupable, label, summarize, workedFor } from './worklog.js'
+import { gitBar, gitStatusNow, onGitStatus } from './gitbar.js'
 import { appendOutput, cleanShell, elapsed } from './run.js'
 import type { Attachment, AttachmentView, RunKind } from '../shared/ipc.js'
 import { attachmentsFromFiles, shrinkImage } from './attach.js'
@@ -79,22 +80,44 @@ interface Mounted {
   tray: HTMLElement
   queue: HTMLElement
   tasks: HTMLElement
+  /** The strip under the message box: folder, branch, tokens, cost and the context ring. */
+  foot: HTMLElement
+  toolsBtn: HTMLButtonElement
   hero: HTMLElement | null
   stick: boolean
-  /** Runs of tool calls and reasoning, each folded under a one-line summary. */
+  /** Rows of the work log: calls of one kind in a row share a row ("Read 3 files"). */
   groups: Group[]
+  /** Each reply to a message: its work (folded under "Worked for…") and then its answer. */
+  turns: Turn[]
+  lastUser?: Extract<Item, { kind: 'user' }>
 }
 
 interface Group {
   el: HTMLElement
   head: HTMLButtonElement
   body: HTMLElement
+  dot: HTMLElement
   items: Item[]
+  /** What the row is for (see activityKind): read, edit, command, think... */
+  kind: string
+}
+
+interface Turn {
+  el: HTMLElement
+  head: HTMLButtonElement
+  work: HTMLElement
+  answer: HTMLElement
+  items: Item[]
+  /** The message this turn answers; its `seconds` is how long the turn took. */
+  user?: Extract<Item, { kind: 'user' }>
+  /** Finished: the work folds away and the answer moves out from under it. */
+  done: boolean
+  stopped?: boolean
 }
 
 let m: Mounted | null = null
 const open = new WeakSet<Item>()
-/** A group the user opened or closed by hand; otherwise it is open while it is the work in progress. */
+/** A row or turn the user opened or closed by hand; otherwise rows stay folded and a turn is open while it runs. */
 const groupChoice = new WeakMap<HTMLElement, boolean>()
 const dirty = new Set<Item>()
 const started = new WeakMap<Item, number>()
@@ -120,14 +143,16 @@ function metaText(v: ChatView): string {
 /** Every input token, whether the provider's cache served it or not. */
 const inputTokens = (v: ChatView) => (v.tokens?.input ?? 0) + (v.tokens?.cacheRead ?? 0) + (v.tokens?.cacheWrite ?? 0)
 
-const metaTip = (v: ChatView) =>
-  `Input ${inputTokens(v).toLocaleString()}${v.tokens?.cacheRead ? ` (${v.tokens.cacheRead.toLocaleString()} from cache)` : ''} · Output ${Math.round((v.tokens?.output ?? 0) + (v.streamed ?? 0) / 4).toLocaleString()} tokens. Cost is an estimate from list prices.`
 
-// Keep the clock moving while a turn runs, without redrawing the whole status row.
+// Keep the clock and the token count moving while a turn runs, without redrawing the thread.
 setInterval(() => {
-  const el = document.querySelector<HTMLElement>('.status-meta')
-  if (m && el && running(m.view)) (el.textContent = metaText(m.view), (el.dataset.tip = metaTip(m.view)))
+  if (!m || !running(m.view)) return
+  const turn = m.turns[m.turns.length - 1]
+  if (turn && !turn.done) paintTurn(turn)
+  paintFoot()
 }, 1000)
+
+onGitStatus(() => paintFoot())
 
 // ---------- items ----------
 
@@ -165,7 +190,7 @@ function renderChanges(item: Extract<Item, { kind: 'changes' }>): HTMLElement {
   return h(
     'div',
     { class: 'changes' },
-    h('div', { class: 'changes-head' }, icon('pencil', 13), h('span', null, `Changed ${files.length} file${files.length === 1 ? '' : 's'}`), h('button', { class: 'link-btn', type: 'button', onClick: () => bus.git() }, 'Review changes')),
+    h('div', { class: 'changes-head' }, icon('pencil', 13), h('span', null, `Changed ${files.length} file${files.length === 1 ? '' : 's'}`), h('button', { class: 'link-btn', type: 'button', onClick: () => bus.changes() }, 'Review changes')),
     ...shown.map((f) => h('button', { class: 'changes-file', type: 'button', title: f, onClick: () => void openFileInPanel(f) }, f)),
     files.length > shown.length ? h('div', { class: 'changes-more' }, `and ${files.length - shown.length} more`) : null,
   )
@@ -459,7 +484,6 @@ function stampReply(v: ChatView, seconds: number) {
 function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
   // The task list lives pinned above the message box, not in the thread.
   if (item.name === 'todo_write') return h('div', { class: 'tool-hidden', hidden: true })
-  const [, , ic] = VERBS[item.name] ?? ['', '', (item.name.startsWith('mcp__') ? 'plug' : 'file') as IconName]
   const state =
     item.status === 'running'
       ? h('span', { class: 'spinner' })
@@ -476,7 +500,6 @@ function renderTool(item: Extract<Item, { kind: 'tool' }>): HTMLElement {
         touch(item)
       },
     },
-    icon(ic, 14),
     h('span', { class: 'tool-verb' }, verb(item.name, item.status === 'running')),
     item.name === 'web_fetch' ? sourceChip(item.summary) : h('span', { class: 'tool-summary' }, item.summary),
     h('span', { class: 'tool-state' }, state),
@@ -684,22 +707,30 @@ function push(v: ChatView, item: Item) {
 }
 
 /**
- * Put an item in the thread. Tool calls and reasoning that follow each other share one group; a message
- * before more work is marked as commentary so only the last reply of a turn carries the copy button.
+ * Put an item in the thread. A typed message stands alone; everything after it belongs to its turn. In the turn,
+ * tool calls and reasoning go in the work log, where calls of one kind in a row share a row; a message before more
+ * work is marked as commentary so only the last reply of a turn carries the copy button.
  */
 function mount(item: Item): HTMLElement {
   const t = m!
   const el = renderItem(item)
   t.els.set(item, el)
-  const last = t.status.previousElementSibling as HTMLElement | null
-  if (groupable(item)) {
+  if (item.kind === 'user') {
+    t.thread.insertBefore(el, t.status)
+    t.lastUser = item
+    return el
+  }
+  const turn = openTurn(t)
+  turn.items.push(item)
+  if (turn.done && !groupable(item) && item.kind !== 'confirm') turn.answer.append(el)
+  else if (groupable(item)) {
+    const kind = activityKind(item)
+    const last = turn.work.lastElementChild
     let g = t.groups.find((x) => x.el === last)
-    if (!g) {
-      const head = h('button', { class: 'work-head', type: 'button', onClick: () => toggleGroup(g!) })
-      const body = h('div', { class: 'work-body' })
-      g = { el: h('div', { class: 'work' }, head, body), head, body, items: [] }
+    if (!g || g.kind !== kind || kind === 'think') {
+      g = newGroup(kind)
       t.groups.push(g)
-      t.thread.insertBefore(g.el, t.status)
+      turn.work.append(g.el)
     }
     g.body.append(el)
     g.items.push(item)
@@ -709,50 +740,121 @@ function mount(item: Item): HTMLElement {
       prev.commentary = true
       t.els.get(prev)?.classList.add('commentary')
     }
-  } else {
-    t.thread.insertBefore(el, t.status)
-    const g = t.groups.find((x) => x.el === last)
-    if (g) paintGroup(g)
-  }
+  } else turn.work.append(el)
+  paintTurn(turn)
   return el
 }
 
-const groupOpen = (g: Group) => {
-  const choice = groupChoice.get(g.el)
-  if (choice !== undefined) return choice
-  // Open while it is the latest thing in a turn that is still running; folded away once the reply follows.
-  return !!m && running(m.view) && m.status.previousElementSibling === g.el
+/** The turn new items go into: the one right above the status row, or a new one. */
+function openTurn(t: Mounted): Turn {
+  const last = t.turns[t.turns.length - 1]
+  if (last && last.el === t.status.previousElementSibling) return last
+  const head = h('button', { class: 'turn-head', type: 'button', onClick: () => toggleTurn(turn) })
+  const work = h('div', { class: 'turn-work' })
+  const answer = h('div', { class: 'turn-answer' })
+  const turn: Turn = { el: h('div', { class: 'turn' }, head, work, answer), head, work, answer, items: [], user: t.lastUser, done: false }
+  t.turns.push(turn)
+  t.thread.insertBefore(turn.el, t.status)
+  return turn
 }
 
-function toggleGroup(g: Group) {
-  groupChoice.set(g.el, !groupOpen(g))
-  paintGroup(g)
+/** The turn ended: its answer moves out from under the work, which folds away. */
+function finishTurn(turn: Turn, stopped = false) {
+  if (!m || turn.done) return
+  for (const it of turn.items.slice(answerStart(turn.items))) {
+    const el = m.els.get(it)
+    if (el) turn.answer.append(el)
+  }
+  turn.done = true
+  turn.stopped = stopped
+  paintTurn(turn)
 }
 
-function paintGroup(g: Group) {
-  const tools = countable(g.items)
-  const steps = tools.length + g.items.filter((i) => i.kind === 'thinking').length
-  const { text, failed } = summarize(g.items)
-  const live = tools.some((t) => t.status === 'running') || g.items.some((i) => i.kind === 'thinking' && !i.done)
-  // A single tool call needs no summary: it is just the row itself.
-  const solo = tools.length < 2
-  g.el.classList.toggle('solo', solo)
-  g.el.hidden = steps === 0
-  const openNow = solo || groupOpen(g)
-  g.el.classList.toggle('folded', !openNow)
-  g.body.hidden = !openNow
-  g.head.setAttribute('aria-expanded', String(openNow))
-  g.head.replaceChildren(
-    icon('chevron', 12),
-    h('span', { class: 'work-text' }, text),
+function finishLastTurn(stopped = false) {
+  const turn = m?.turns[m.turns.length - 1]
+  if (turn) finishTurn(turn, stopped)
+}
+
+const turnOpen = (turn: Turn) => groupChoice.get(turn.el) ?? !turn.done
+
+function toggleTurn(turn: Turn) {
+  groupChoice.set(turn.el, !turnOpen(turn))
+  paintTurn(turn)
+}
+
+/** "Working for 12s" while it runs, then "Worked for 2m 31s · Edited 2 files and ran 3 commands". */
+function paintTurn(turn: Turn) {
+  if (!m) return
+  const work = turn.done ? turn.items.slice(0, answerStart(turn.items)) : turn.items
+  const steps = work.filter((i) => groupable(i) || i.kind === 'confirm').length
+  const open = turnOpen(turn)
+  turn.el.classList.toggle('live', !turn.done)
+  turn.el.classList.toggle('open', open)
+  turn.head.hidden = !steps
+  turn.work.hidden = turn.done && (!open || !steps)
+  turn.head.setAttribute('aria-expanded', String(open))
+  if (!steps) return
+  const { text, failed } = summarize(work)
+  const secs = turn.done ? turn.user?.seconds : m.view.t0 !== undefined ? (performance.now() - m.view.t0) / 1000 : undefined
+  const time = !turn.done
+    ? `Working for ${workedFor(secs ?? 0)}`
+    : turn.stopped
+      ? secs !== undefined ? `Stopped after ${workedFor(secs)}` : 'Stopped'
+      : secs !== undefined ? `Worked for ${workedFor(secs)}` : 'Worked'
+  turn.head.replaceChildren(
+    h('span', { class: `turn-time ${turn.done ? '' : 'shimmer'}` }, time),
+    ...(turn.done && text ? [h('span', { class: 'turn-sum' }, text)] : []),
     ...(failed ? [h('span', { class: 'work-fail' }, `${failed} failed`)] : []),
-    ...(live ? [h('span', { class: 'spinner' })] : []),
+    icon('chevron', 12),
   )
 }
 
-/** After a turn ends, fold every group except those the user opened. */
+const KIND_ICON: Record<string, IconName> = { think: 'brain', edit: 'pencil', command: 'terminal', read: 'file', search: 'search', web: 'globe' }
+
+/** The mark on a row's dot: its kind, or for a tool of its own, that tool's icon. */
+function dotIcon(g: Group): IconName {
+  if (KIND_ICON[g.kind]) return KIND_ICON[g.kind]
+  const name = g.kind.slice('other:'.length)
+  return VERBS[name]?.[2] ?? (name.startsWith('mcp__') ? 'plug' : 'wrench')
+}
+
+function newGroup(kind: string): Group {
+  const head = h('button', { class: 'act-head', type: 'button', onClick: () => toggleGroup(g) })
+  const body = h('div', { class: 'act-body' })
+  const dot = h('span', { class: 'act-dot', 'aria-hidden': 'true' })
+  const g: Group = { el: h('div', { class: `act k-${kind.split(':')[0]}` }, dot, h('div', { class: 'act-main' }, head, body)), head, body, dot, items: [], kind }
+  return g
+}
+
+function toggleGroup(g: Group) {
+  groupChoice.set(g.el, !groupChoice.get(g.el))
+  paintGroup(g)
+}
+
+/** A row of the work log: one call as it is, several as "Read 3 files" that opens to show each. */
+function paintGroup(g: Group) {
+  const tools = countable(g.items)
+  const live = tools.some((t) => t.status === 'running') || g.items.some((i) => i.kind === 'thinking' && !i.done)
+  const failed = tools.filter((t) => t.status === 'error').length
+  const solo = g.items.length < 2
+  const open = solo || !!groupChoice.get(g.el)
+  g.el.classList.toggle('solo', solo)
+  g.el.classList.toggle('live', live)
+  g.el.classList.toggle('failed', failed > 0)
+  g.dot.replaceChildren(icon(dotIcon(g), 12))
+  g.head.hidden = solo
+  g.body.hidden = !open
+  g.head.setAttribute('aria-expanded', String(open))
+  if (solo) return
+  const own = g.kind.startsWith('other:')
+  const text = own ? `${verb(tools[0].name, live)} ×${tools.length}` : label(actionOf(tools[0].name), tools, live)
+  g.head.replaceChildren(h('span', { class: `act-label ${live ? 'shimmer' : ''}` }, text), ...(failed ? [h('span', { class: 'work-fail' }, `${failed} failed`)] : []), icon('chevron', 11))
+}
+
+/** After a turn ends, repaint its rows and heads. */
 function paintGroups() {
   for (const g of m?.groups ?? []) paintGroup(g)
+  for (const t of m?.turns ?? []) paintTurn(t)
 }
 
 function remove(item: Item) {
@@ -767,6 +869,13 @@ function remove(item: Item) {
     if (g.items.length) paintGroup(g)
     else (g.el.remove(), m.groups.splice(m.groups.indexOf(g), 1))
   }
+  const turn = m.turns.find((x) => x.items.includes(item))
+  if (turn) {
+    turn.items.splice(turn.items.indexOf(item), 1)
+    if (turn.items.length) paintTurn(turn)
+    else (turn.el.remove(), m.turns.splice(m.turns.indexOf(turn), 1))
+  }
+  if (item === m.lastUser) m.lastUser = [...m.view.items].reverse().find((x): x is Extract<Item, { kind: 'user' }> => x.kind === 'user')
 }
 
 function touch(item: Item) {
@@ -778,6 +887,8 @@ function touch(item: Item) {
   m.els.set(item, el)
   const g = m.groups.find((x) => x.items.includes(item))
   if (g) paintGroup(g)
+  const turn = m.turns.find((x) => x.items.includes(item))
+  if (turn) paintTurn(turn)
   restoreRuns(el, m.view.id)
   follow()
 }
@@ -837,12 +948,12 @@ function paintStatus() {
   status.replaceChildren()
   if (v.status !== 'idle') {
     frog.set(v.status === 'thinking' ? 'thinking' : v.status)
-    status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)))
+    status.append(frog.el, h('span', { class: `status-label ${v.status === 'thinking' ? 'shimmer' : ''}` }, v.label || 'Thinking…'))
   } else if (v.note) {
     frog.set(v.note.startsWith('Stopped') ? 'idle' : v.note.startsWith('Something') ? 'oops' : 'happy')
     const lastTurn = v.items.filter((i) => i.kind === 'user').length - 1
     const undo = v.kind === 'code' && (v.checkpoints ?? []).includes(lastTurn) ? h('button', { class: 'status-btn', type: 'button', title: 'Undo the file changes from this turn', onClick: (e: Event) => void undoLast(e.currentTarget as HTMLElement) }, icon('undo', 12), 'Undo changes') : null
-    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('span', { class: 'status-meta', 'data-tip': metaTip(v) }, metaText(v)), h('button', { class: 'status-btn', type: 'button', title: 'Retry', onClick: () => void retryLast() }, icon('refresh', 12), 'Retry'), ...(undo ? [undo] : []))
+    status.append(frog.el, h('span', { class: 'status-label' }, v.note), h('button', { class: 'status-btn', type: 'button', title: 'Retry', onClick: () => void retryLast() }, icon('refresh', 12), 'Retry'), ...(undo ? [undo] : []))
   }
   syncSend()
   follow()
@@ -955,6 +1066,12 @@ export function handleEvent(ev: ChatEvent) {
       setStatus(v, 'thinking')
       break
     case 'usage':
+      v.usage = {
+        input: (v.usage?.input ?? 0) + ev.input,
+        output: (v.usage?.output ?? 0) + ev.output,
+        cacheRead: (v.usage?.cacheRead ?? 0) + (ev.cacheRead ?? 0),
+        cacheWrite: (v.usage?.cacheWrite ?? 0) + (ev.cacheWrite ?? 0),
+      }
       v.tokens = {
         input: (v.tokens?.input ?? 0) + ev.input,
         output: (v.tokens?.output ?? 0) + ev.output,
@@ -962,6 +1079,7 @@ export function handleEvent(ev: ChatEvent) {
         cacheWrite: (v.tokens?.cacheWrite ?? 0) + (ev.cacheWrite ?? 0),
       }
       v.streamed = 0
+      if (m?.view === v) paintFoot()
       break
     case 'reasoning':
       v.streamed = (v.streamed ?? 0) + ev.delta.length
@@ -1040,10 +1158,11 @@ export function handleEvent(ev: ChatEvent) {
       refreshFiles()
       void refreshGit()
       endThinking(v)
+      timeTurn(v, ev.seconds)
       stampReply(v, ev.seconds)
       setStatus(v, 'idle', '', ev.seconds >= 1 ? `Done in ${ev.seconds.toFixed(1)}s` : 'Done')
       showChanges(v)
-      if (m?.view === v) paintGroups()
+      if (m?.view === v) (finishLastTurn(), paintGroups(), paintFoot())
       flushQueue(v)
       break
     case 'cancelled':
@@ -1051,19 +1170,27 @@ export function handleEvent(ev: ChatEvent) {
       if (m?.view === v) paintQueue()
       endThinking(v)
       closeOpenConfirms(v)
+      timeTurn(v)
       setStatus(v, 'idle', '', 'Stopped')
-      if (m?.view === v) paintGroups()
+      if (m?.view === v) (finishLastTurn(true), paintGroups(), paintFoot())
       break
     case 'error':
       v.queue = []
       if (m?.view === v) paintQueue()
       endThinking(v)
       closeOpenConfirms(v)
+      timeTurn(v)
       push(v, { kind: 'error', text: ev.message })
       setStatus(v, 'idle', '', 'Something went wrong')
-      if (m?.view === v) paintGroups()
+      if (m?.view === v) (finishLastTurn(true), paintGroups(), paintFoot())
       break
   }
+}
+
+/** Record how long the turn took on the message that started it (the main process saves the same number). */
+function timeTurn(v: ChatView, seconds?: number) {
+  const user = [...v.items].reverse().find((i): i is Extract<Item, { kind: 'user' }> => i.kind === 'user')
+  if (user) user.seconds = seconds ?? (v.t0 !== undefined ? (performance.now() - v.t0) / 1000 : undefined)
 }
 
 function closeOpenConfirms(v: ChatView) {
@@ -1170,7 +1297,7 @@ function closeMention() {
 
 function paintMention() {
   if (!m || !mention) return
-  const wrap = m.input.closest('.composer-wrap')
+  const wrap = m.input.closest('.composer-box')
   document.querySelector('.mention-menu')?.remove()
   const mn = mention
   wrap?.append(
@@ -1256,7 +1383,7 @@ const RING_C = 2 * Math.PI * RING_R
 /** Croo summarizes older messages at this share of the window (COMPACT_AT in compact.ts). */
 const COMPACT_SHARE = 0.8
 
-/** A small ring in the header that fills as the conversation uses up the model's context window. */
+/** A small ring under the message box that fills as the conversation uses up the model's context window. */
 function contextRing(v: ChatView): HTMLElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 18 18')
@@ -1265,22 +1392,110 @@ function contextRing(v: ChatView): HTMLElement {
   svg.innerHTML = `<circle class="ring-track" cx="9" cy="9" r="${RING_R}"/><circle class="ring-fill" cx="9" cy="9" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}" transform="rotate(-90 9 9)"/>`
   const el = h('span', { class: 'context-ring no-drag', role: 'img' }, svg)
   queueMicrotask(() => paintRing(v))
-  return el
+  return h('span', { class: 'ring-wrap' }, h('span', { class: 'ring-pct', hidden: true }), el)
 }
 
 function paintRing(v: ChatView) {
-  const el = document.querySelector<HTMLElement>('.chat-head .context-ring')
+  const el = document.querySelector<HTMLElement>('.composer-foot .context-ring')
+  const pctEl = document.querySelector<HTMLElement>('.composer-foot .ring-pct')
   if (!el) return
   const c = v.context
   el.hidden = !c?.window || !c.used
+  if (pctEl) pctEl.hidden = el.hidden
   if (!c?.window || !c.used) return
   const share = Math.min(c.used / c.window, 1)
   el.querySelector('.ring-fill')?.setAttribute('stroke-dashoffset', String(RING_C * (1 - share)))
   el.classList.toggle('warn', share >= COMPACT_SHARE - 0.15 && share < COMPACT_SHARE)
   el.classList.toggle('full', share >= COMPACT_SHARE)
   const pct = Math.round(share * 100)
+  if (pctEl) pctEl.textContent = `${pct}%`
   el.title = `Context: ${fmtTokens(c.used)} of ${fmtTokens(c.window)} tokens (${pct}%). Older messages are summarized automatically at ${COMPACT_SHARE * 100}%.`
   el.setAttribute('aria-label', `Context ${pct}% full`)
+}
+
+/** Tokens and cost of the whole chat, branch and folder: the strip under the message box. */
+function paintFoot() {
+  if (!m) return
+  const v = m.view
+  const u = v.usage ?? { input: 0, output: 0 }
+  const live = running(v) ? (v.streamed ?? 0) / 4 : 0
+  const input = u.input + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0)
+  const output = u.output + live
+  const usage = m.foot.querySelector<HTMLElement>('.foot-usage')
+  if (usage) {
+    const profile = store.state.demo ? undefined : store.state.profiles.find((p) => p.active)
+    const price = profile?.price
+    const local = price?.source === 'local' || !!profile?.engine
+    usage.hidden = input + output < 1
+    usage.replaceChildren(
+      h('span', { class: 'foot-in' }, icon('arrowUp', 11), fmtTokens(input)),
+      h('span', { class: 'foot-out' }, icon('arrowDown', 11), `${live ? '~' : ''}${fmtTokens(output)}`),
+      ...(price || local ? [h('span', { class: 'foot-cost' }, local ? '$0.00' : formatCost(costOf({ ...u, output }, price!)))] : []),
+    )
+    usage.dataset.tip = [
+      `This chat: ${input.toLocaleString()} tokens in${u.cacheRead ? ` (${u.cacheRead.toLocaleString()} from cache)` : ''}, ${Math.round(output).toLocaleString()} out.`,
+      local ? 'Runs on this Mac, so it costs nothing.' : price ? 'Cost is an estimate from list prices.' : 'No price is known for this model.',
+    ].join(' ')
+  }
+  const branch = m.foot.querySelector<HTMLElement>('.foot-branch')
+  if (branch) {
+    const st = gitStatusNow()
+    branch.hidden = !st?.repo || !st.branch
+    branch.querySelector('span')!.textContent = st?.branch ?? ''
+  }
+}
+
+const toolName = (name: string) => (name.startsWith('mcp__') ? name.split('__').slice(2).join('__') : name)
+
+/** The tools button's count follows the chat (Plan mode and MCP servers change it). */
+function paintToolsBtn() {
+  if (!m) return
+  const { view, toolsBtn } = m
+  void croo.listTools(view.id).then((list) => {
+    if (m?.toolsBtn !== toolsBtn) return
+    toolsBtn.querySelector('span')!.textContent = String(list.length)
+    toolsBtn.dataset.tip = `${list.length} tools Croo can use here`
+  })
+}
+
+/** What the agent can call in this chat, grouped by where it comes from, with how often this chat used each. */
+async function toggleToolsMenu() {
+  const existing = document.querySelector('.tools-menu')
+  if (existing) return existing.remove()
+  if (!m) return
+  const { view, toolsBtn } = m
+  const list: ToolInfo[] = await croo.listTools(view.id)
+  if (m?.toolsBtn !== toolsBtn) return
+  const used = new Map<string, number>()
+  for (const it of view.items) if (it.kind === 'tool') used.set(it.name, (used.get(it.name) ?? 0) + 1)
+  const groups = new Map<string, ToolInfo[]>()
+  for (const t of list) groups.set(t.server ?? '', [...(groups.get(t.server ?? '') ?? []), t])
+  const close = () => {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', esc, true)
+  }
+  const outside = (e: MouseEvent) => !menu.contains(e.target as Node) && !toolsBtn.contains(e.target as Node) && close()
+  const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), close())
+  const row = (t: ToolInfo) => {
+    const n = used.get(t.name) ?? 0
+    const ic = VERBS[t.name]?.[2] ?? (t.server ? 'plug' : 'wrench')
+    return h('div', { class: `tool-item ${n ? 'used' : ''}`, title: t.description }, icon(ic, 13), h('span', { class: 'tool-item-text' }, h('b', null, toolName(t.name)), h('small', null, t.description)), n ? h('span', { class: 'tool-used', 'data-tip': `Used ${n} time${n === 1 ? '' : 's'} in this chat` }, `${n}×`) : null)
+  }
+  const plan = view.kind === 'code' && store.state.permissionMode === 'plan'
+  const menu = h(
+    'div',
+    { class: 'tools-menu', role: 'dialog', 'aria-label': 'Tools' },
+    h('div', { class: 'tools-menu-head' }, h('b', null, `${list.length} tools`), h('small', null, plan ? 'Plan mode: read-only tools only' : view.kind === 'chat' ? 'Chat mode' : 'Code mode')),
+    h(
+      'div',
+      { class: 'tools-menu-list' },
+      [...groups].flatMap(([server, tools]) => [h('div', { class: 'tools-menu-group' }, server ? `MCP · ${server}` : 'Built in'), ...tools.map(row)]),
+    ),
+  )
+  toolsBtn.closest('.composer-box')?.append(menu)
+  document.addEventListener('mousedown', outside, true)
+  document.addEventListener('keydown', esc, true)
 }
 
 export function currentChat(): ChatView | null {
@@ -1307,13 +1522,25 @@ export function showChat(view: ChatView, root: HTMLElement) {
   const frog = new Frog(42)
 
   const mode = h('button', { class: 'mode no-drag', type: 'button', onClick: () => toggleModeMenu() })
-  const chip = h('button', { class: 'chip no-drag', type: 'button', onClick: () => openModelMenu(chip, composerWrap) })
+  const chip = h('button', { class: 'chip no-drag', type: 'button', onClick: () => openModelMenu(chip, box) })
   const effort = h('button', { class: 'effort no-drag', type: 'button', onClick: () => toggleEffortMenu() })
+  const toolsBtn = h('button', { class: 'tools-btn no-drag', type: 'button', onClick: () => void toggleToolsMenu() }, icon('wrench', 13), h('span', null, ''))
   const composerWrap = h('div', { class: 'composer-wrap' })
+  const box = h('div', { class: 'composer-box' })
   const tray = h('div', { class: 'attach-tray', hidden: true })
   const queue = h('div', { class: 'queue', hidden: true })
   const tasks = h('div', { class: 'tasks', hidden: true })
-  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, tasks, hero: null, stick: true, groups: [] }
+  const foot = h(
+    'div',
+    { class: 'composer-foot' },
+    plain ? null : h('button', { class: 'foot-item no-drag', type: 'button', 'data-tip': `${tildify(view.cwd, state.home)} · Files (⌘⇧E)`, onClick: () => bus.files() }, icon('folder', 12), h('span', null, folder?.name ?? tildify(view.cwd, state.home))),
+    plain ? null : h('button', { class: 'foot-item foot-branch no-drag', type: 'button', hidden: true, 'data-tip': 'Review changes (⌘⇧G)', onClick: () => bus.changes() }, icon('branch', 12), h('span', null, '')),
+    plain || !folder ? null : instructionChip(folder.instructions, input),
+    h('span', { class: 'push-right' }),
+    h('span', { class: 'foot-usage', hidden: true }),
+    contextRing(view),
+  )
+  m = { view, els: new Map(), thread, scroll, status, input, send, frog, mode, chip, effort, tray, queue, tasks, foot, toolsBtn, hero: null, stick: true, groups: [], turns: [] }
   const mounted = m
 
   input.value = view.draft
@@ -1397,6 +1624,8 @@ export function showChat(view: ChatView, root: HTMLElement) {
   }
   thread.append(status)
   for (const item of view.items) mount(item)
+  // Every turn but one still running is over: fold its work away.
+  for (const turn of mounted.turns) if (!(running(view) && turn === mounted.turns[mounted.turns.length - 1])) finishTurn(turn, false)
   restoreRuns(thread, view.id)
 
   root.replaceChildren(
@@ -1410,13 +1639,12 @@ export function showChat(view: ChatView, root: HTMLElement) {
         h('span', { class: 'chat-title' }, title),
         h('span', { class: 'chat-folder' }, plain ? '' : (folder?.name ?? '')),
         h('span', { class: 'push-right' }),
-        contextRing(view),
+        ...(plain ? [] : [gitBar(), h('span', { class: 'head-sep', 'aria-hidden': 'true' })]),
         h('button', { class: 'icon-btn no-drag', type: 'button', title: 'Export chat as markdown', onClick: () => void exportCurrent() }, icon('share', 17)),
         ...(plain
           ? []
           : [
               h('button', { class: 'icon-btn no-drag btn-files', type: 'button', title: 'Files (⌘⇧E)', onClick: () => bus.files() }, icon('folder', 17)),
-              h('button', { class: 'icon-btn no-drag btn-git', type: 'button', title: 'Git (⌘⇧G)', 'data-count': String(store.gitCount), onClick: () => bus.git() }, icon('branch', 17)),
               h('button', { class: 'icon-btn no-drag btn-browser', type: 'button', title: 'Browser (⌘⇧B)', onClick: () => bus.browser() }, icon('globe', 17)),
               h('button', { class: 'icon-btn no-drag btn-term', type: 'button', title: 'Terminal (⌘J)', onClick: () => bus.terminal() }, icon('terminal', 17)),
             ]),
@@ -1425,22 +1653,19 @@ export function showChat(view: ChatView, root: HTMLElement) {
       composerWrap,
     ),
   )
-  composerWrap.append(
-    tasks,
-    queue,
-    h('div', { class: 'composer' }, tray, input, voice.bar, h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('paperclip', 17)), voice.mic, send),
+  const attach = h('button', { class: 'attach no-drag', type: 'button', title: 'Attach files or images', onClick: async () => { const r = await croo.pickAttachments(); await addAttachments(r.attachments, r.skipped) } }, icon('plus', 16))
+  box.append(
     h(
       'div',
-      { class: 'composer-hint' },
-      plain ? null : mode,
-      plain
-        ? h('span', { class: 'cwd' })
-        : h('span', { class: 'cwd', 'data-tip': tildify(view.cwd, state.home) }, folder?.name ?? tildify(view.cwd, state.home)),
-      plain || !folder ? null : instructionChip(folder.instructions, input),
-      effort,
-      chip,
+      { class: 'composer' },
+      tray,
+      input,
+      voice.bar,
+      h('div', { class: 'composer-row' }, attach, chip, effort, toolsBtn, h('span', { class: 'push-right' }), plain ? null : mode, voice.mic, send),
     ),
+    foot,
   )
+  composerWrap.append(tasks, queue, box)
   bus.insert = (text) => {
     input.value = input.value ? `${input.value.replace(/\s*$/, ' ')}${text}` : text
     input.dispatchEvent(new Event('input'))
@@ -1449,6 +1674,7 @@ export function showChat(view: ChatView, root: HTMLElement) {
   paintStatus()
   paintQueue()
   paintTasks()
+  paintFoot()
   refreshMode()
   paintTray()
   autosize()
@@ -1470,6 +1696,8 @@ const MODES: { id: PermissionMode; label: string; icon: IconName; desc: string }
 
 export function refreshMode() {
   if (!m) return
+  paintToolsBtn()
+  paintFoot()
   const cur = MODES.find((x) => x.id === store.state.permissionMode) ?? MODES[1]
   m.mode.className = `mode no-drag mode-${cur.id}`
   m.mode.dataset.tip = 'Permission mode'
@@ -1531,7 +1759,7 @@ function toggleEffortMenu() {
       ),
     ),
   )
-  m.mode.closest('.composer-wrap')?.append(menu)
+  m.mode.closest('.composer-box')?.append(menu)
   document.addEventListener('mousedown', outside, true)
   document.addEventListener('keydown', esc, true)
 }
@@ -1574,7 +1802,7 @@ function paintSlash() {
   if (!m || !slash) return
   const s = slash
   document.querySelector('.slash-menu')?.remove()
-  m.mode.closest('.composer-wrap')?.append(
+  m.mode.closest('.composer-box')?.append(
     h(
       'div',
       { class: 'slash-menu', role: 'listbox' },
@@ -1629,7 +1857,7 @@ function toggleModeMenu() {
       ),
     ),
   )
-  m?.mode.closest('.composer-wrap')?.append(menu)
+  m?.mode.closest('.composer-box')?.append(menu)
   document.addEventListener('mousedown', outside, true)
   document.addEventListener('keydown', esc, true)
 }

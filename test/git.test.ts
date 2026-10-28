@@ -48,6 +48,12 @@ describe('against a real repository', () => {
     expect((await gitStatus(plain)).repo).toBe(false)
   })
 
+  it('knows a fresh repository has no commits yet', async () => {
+    const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'croo-fresh-'))
+    sh(fresh, 'init', '-q', '-b', 'main')
+    expect((await gitStatus(fresh)).hasCommits).toBe(false)
+  })
+
   it('reports changes with line counts, and diffs tracked and untracked files', async () => {
     fs.writeFileSync(path.join(dir, 'a.txt'), 'one\nTWO\nthree\n')
     fs.writeFileSync(path.join(dir, 'new.txt'), 'hello\n')
@@ -56,7 +62,8 @@ describe('against a real repository', () => {
     expect(st.branch).toBe('main')
     const a = st.files.find((f) => f.path === 'a.txt')!
     expect([a.work, a.add, a.del]).toEqual(['M', 2, 1])
-    expect(st.files.find((f) => f.path === 'new.txt')).toMatchObject({ index: '?', work: '?' })
+    expect(st.files.find((f) => f.path === 'new.txt')).toMatchObject({ index: '?', work: '?', add: 1, del: 0 })
+    expect(st.hasCommits).toBe(true)
     expect(await gitDiff(dir, 'a.txt', false)).toContain('+TWO')
     expect(await gitDiff(dir, 'new.txt', true)).toContain('+hello')
   })
@@ -76,7 +83,7 @@ describe('against a real repository', () => {
   })
 })
 
-import { friendlyGitError, gitConnect, gitPush, normalizeRemote } from '../src/main/git.js'
+import { friendlyGitError, gitConnect, gitPush, normalizeRemote, prUrl } from '../src/main/git.js'
 
 describe('remotes and friendly errors', () => {
   it('normalizes what people type into a remote address', () => {
@@ -124,5 +131,13 @@ describe('remotes and friendly errors', () => {
     expect((await gitStatus(work)).upstream).toBe('origin/main')
     expect(sh(bare, 'log', '--oneline').trim()).toMatch(/first/)
     expect((await gitConnect(work, '--bad')).ok).toBe(false)
+  })
+})
+
+describe('pull requests', () => {
+  it('finds the pull request address in what gh printed', () => {
+    expect(prUrl('Creating pull request for feat into main\n\nhttps://github.com/you/app/pull/42\n')).toBe('https://github.com/you/app/pull/42')
+    expect(prUrl('a pull request for branch "feat" into branch "main" already exists:\nhttps://github.com/you/app/pull/7')).toBe('https://github.com/you/app/pull/7')
+    expect(prUrl('no address here')).toBeUndefined()
   })
 })

@@ -1,7 +1,8 @@
-import type { FsEntry, FsFile, GitFile, GitStatus } from '../shared/ipc.js'
+import type { FsEntry, FsFile, GitFile } from '../shared/ipc.js'
 import { h, icon, tildify } from './dom.js'
 import { Frog } from './frog.js'
 import { parseDiff, statusLabel } from './gitdiff.js'
+import { applyGitStatus, gitStatusNow, onGitStatus } from './gitbar.js'
 import { highlightLines } from './highlight.js'
 import { bus, croo, remember, store } from './store.js'
 
@@ -37,6 +38,11 @@ export function initSide() {
   bus.files = () => toggleSide('files')
   bus.browser = () => toggleSide('browser')
   bus.git = () => toggleSide('git')
+  bus.changes = (opts) => {
+    if (tab !== 'git') toggleSide('git')
+    gitPanel.publish(!!opts?.publish)
+  }
+  bus.gitRefresh = refreshGit
   // Things change on disk while you are elsewhere: look again when the window comes back.
   window.addEventListener('focus', () => void refreshGit())
   bus.insert = () => {}
@@ -69,6 +75,7 @@ export function setFolder(next: string | undefined) {
   cwd = next
   tree.reset()
   gitPanel.reset()
+  applyGitStatus(next, null)
   if (!next) return closeSide()
   void refreshGit()
   if (tab === 'files' || tab === 'git') render()
@@ -80,7 +87,7 @@ export async function refreshGit() {
   const at = cwd
   try {
     const st = await croo.gitStatus(at)
-    if (at === cwd) gitPanel.apply(st)
+    if (at === cwd) applyGitStatus(at, st)
   } catch {}
 }
 
@@ -247,112 +254,52 @@ const tree = (() => {
   }
 })()
 
-// ---------- git ----------
+// ---------- changes ----------
 
+/**
+ * What changed in the folder, Kilo style: a filterable list of files on top and every file's diff below it, one
+ * after the other. Committing and pushing live in the header (gitbar.ts); the card to connect a remote lives here.
+ */
 const gitPanel = (() => {
-  let status: GitStatus | null = null
-  const picked = new Set<string>()
-  const known = new Set<string>()
-  const open = new Set<string>()
   const diffs = new Map<string, string>()
-  let message = ''
-  let busy: '' | 'commit' | 'push' | 'pull' = ''
-  let suggesting = false
-  let aiBtn: HTMLButtonElement
-  let note: { ok: boolean; text: string } | null = null
+  /** Each file's line counts when its diff was fetched: a diff is fetched again only when they move. */
+  const seen = new Map<string, string>()
+  let filter = ''
+  let focus: string | null = null
   let publishing = false
-  let publishCard: HTMLElement
+  let busy = false
+  let note: { ok: boolean; text: string } | null = null
   let top: HTMLElement | null = null
   let list: HTMLElement | null = null
-  let foot: HTMLElement | null = null
-  let box: HTMLTextAreaElement | null = null
-  let commitBtn: HTMLButtonElement
-  let pushBtn: HTMLButtonElement
-  let pullBtn: HTMLButtonElement
-  let noteEl: HTMLElement
+  let stream: HTMLElement | null = null
+  let publishCard: HTMLElement | null = null
+  let watcher: IntersectionObserver | null = null
 
-  const files = () => status?.files ?? []
-  const chosen = () => files().filter((f) => picked.has(f.path)).map((f) => f.path)
-
-  const setBadge = (n: number) => {
-    store.gitCount = n
-    for (const b of document.querySelectorAll<HTMLElement>('.btn-git')) b.dataset.count = String(n)
-  }
-
-  const apply = (s: GitStatus) => {
-    status = s
-    const present = new Set(s.files.map((f) => f.path))
-    for (const p of [...picked]) if (!present.has(p)) picked.delete(p)
-    for (const f of s.files) if (!known.has(f.path)) (known.add(f.path), picked.add(f.path)) // new changes start selected
-    diffs.clear()
-    setBadge(s.repo ? s.files.length : 0)
-    paint()
-  }
-
-  const load = async () => {
-    if (cwd) apply(await croo.gitStatus(cwd))
-  }
+  const status = () => gitStatusNow()
+  const files = () => status()?.files ?? []
+  const shown = () => files().filter((f) => !filter || f.path.toLowerCase().includes(filter.toLowerCase()))
 
   /** Connect or create a remote, then push. Used by the Publish card. */
   const publish = async (how: { remote: string } | { name: string; isPrivate: boolean }) => {
-    if (!cwd || !status || busy) return
-    busy = 'push'
+    if (!cwd || busy) return
+    busy = true
     note = null
-    paintFoot()
+    paintPublish()
     const res = 'remote' in how ? await croo.gitConnect(cwd, how.remote) : await croo.gitPublish(cwd, how.name, how.isPrivate)
-    busy = ''
+    busy = false
     note = { ok: res.ok, text: res.hint ? (res.output ? `${res.hint}\n\n${res.output}` : res.hint) : res.output }
     if (res.ok) publishing = false
-    await load()
+    await refreshGit()
   }
 
-  const run = async (kind: 'commit' | 'push' | 'pull') => {
-    if (!cwd || !status || busy) return
-    busy = kind
-    note = null
-    paintFoot()
-    const res =
-      kind === 'commit'
-        ? await croo.gitCommit(cwd, chosen(), message)
-        : kind === 'push'
-          ? await croo.gitPush(cwd, !!status.upstream)
-          : await croo.gitPull(cwd)
-    busy = ''
-    note = { ok: res.ok, text: res.hint ? (res.output ? `${res.hint}\n\n${res.output}` : res.hint) : res.output }
-    if (res.ok && kind === 'commit') {
-      message = ''
-      if (box) box.value = ''
-      open.clear()
-    }
-    await load()
-    refreshFiles()
-  }
-
-  /** Ask the selected model to write the commit message from the chosen files' diffs. */
-  const suggest = async () => {
-    if (!cwd || suggesting || busy || !chosen().length) return
-    suggesting = true
-    note = null
-    paintFoot()
-    const res = await croo.suggestCommit(cwd, chosen())
-    suggesting = false
-    if (res.ok) {
-      message = res.message
-      if (box) (box.value = message, (box.rows = Math.min(8, Math.max(2, message.split('\n').length))))
-    } else note = { ok: false, text: res.error }
-    paintFoot()
-  }
-
-  const toggleOpen = async (f: GitFile) => {
-    if (open.has(f.path)) open.delete(f.path)
-    else {
-      open.add(f.path)
-      if (cwd && !diffs.has(f.path)) {
-        paintList()
-        diffs.set(f.path, await croo.gitDiff(cwd, f.path, f.index === '?'))
-      }
-    }
-    paintList()
+  const load = async (f: GitFile) => {
+    if (!cwd || diffs.has(f.path)) return
+    const at = cwd
+    const text = await croo.gitDiff(at, f.path, f.index === '?')
+    if (at !== cwd) return
+    diffs.set(f.path, text)
+    const body = stream?.querySelector<HTMLElement>(`[data-path="${CSS.escape(f.path)}"] .git-diff`)
+    if (body) body.replaceWith(diffView(f))
   }
 
   const diffView = (f: GitFile): HTMLElement => {
@@ -372,73 +319,110 @@ const gitPanel = (() => {
     )
   }
 
+  const counts = (f: GitFile) => (f.add !== undefined || f.del !== undefined ? h('span', { class: 'git-counts' }, h('b', { class: 'add' }, `+${f.add ?? 0}`), h('b', { class: 'del' }, `−${f.del ?? 0}`)) : null)
+
+  /** A file in the list: a click brings its diff into view. */
   const fileRow = (f: GitFile): HTMLElement => {
     const { letter, word } = statusLabel(f.index, f.work)
     const slash = f.path.lastIndexOf('/')
-    const isOpen = open.has(f.path)
-    const check = h('input', { class: 'check', type: 'checkbox', 'aria-label': `Include ${f.path}`, onClick: (e: Event) => e.stopPropagation() })
-    check.checked = picked.has(f.path)
-    check.addEventListener('change', () => ((check.checked ? picked.add(f.path) : picked.delete(f.path)), paintList(), paintFoot()))
     return h(
-      'div',
-      { class: `git-file ${isOpen ? 'open' : ''}` },
-      h(
-        'div',
-        { class: 'git-row', role: 'button', tabindex: 0, onClick: () => void toggleOpen(f), onKeydown: (e: KeyboardEvent) => e.key === 'Enter' && e.target === e.currentTarget && void toggleOpen(f) },
-        check,
-        h('span', { class: `git-badge s-${letter}`, 'data-tip': word }, letter),
-        h('span', { class: 'git-name', 'data-tip': f.orig ? `${f.orig} → ${f.path}` : f.path }, slash >= 0 ? h('small', null, f.path.slice(0, slash + 1)) : null, f.path.slice(slash + 1)),
-        f.add !== undefined || f.del !== undefined ? h('span', { class: 'git-counts' }, h('b', { class: 'add' }, `+${f.add ?? 0}`), h('b', { class: 'del' }, `−${f.del ?? 0}`)) : null,
-        icon('chevron', 11),
-      ),
-      isOpen ? diffView(f) : null,
+      'button',
+      { class: `git-row ${focus === f.path ? 'on' : ''}`, type: 'button', onClick: () => jump(f.path) },
+      h('span', { class: `git-badge s-${letter}`, 'data-tip': word }, letter),
+      h('span', { class: 'git-name', 'data-tip': f.orig ? `${f.orig} → ${f.path}` : f.path }, f.path.slice(slash + 1), slash >= 0 ? h('small', null, f.path.slice(0, slash)) : null),
+      counts(f),
     )
   }
 
+  /** A file's diff in the stream, under a header that stays put while you scroll through it. */
+  const section = (f: GitFile): HTMLElement => {
+    const { letter } = statusLabel(f.index, f.work)
+    return h(
+      'section',
+      { class: 'git-sec', 'data-path': f.path },
+      h(
+        'div',
+        { class: 'git-sec-head' },
+        h('span', { class: `git-badge s-${letter}` }, letter),
+        h('span', { class: 'git-sec-name mono', title: f.path }, f.path),
+        counts(f),
+        h('span', { class: 'push-right' }),
+        h('button', { class: 'icon-btn small', type: 'button', title: 'Ask Croo about this change', onClick: () => bus.insert(`@${f.path} `) }, icon('message', 14)),
+        f.work !== 'D' && f.index !== 'D' ? h('button', { class: 'icon-btn small', type: 'button', title: 'Open file', onClick: () => void openFileInPanel(f.path) }, icon('file', 14)) : null,
+      ),
+      diffView(f),
+    )
+  }
+
+  const jump = (path: string) => {
+    focus = path
+    paintList()
+    stream?.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
+
   const paintTop = () => {
+    const s = status()
     if (!top) return
-    if (!status?.repo) return top.replaceChildren()
+    if (!s?.repo) return top.replaceChildren()
     top.replaceChildren(
-      h('span', { class: 'branch', 'data-tip': status.upstream ? `Tracking ${status.upstream}` : 'No upstream yet' }, icon('branch', 13), status.branch || 'HEAD'),
-      status.ahead || status.behind
-        ? h('span', { class: 'sync' }, status.ahead ? h('b', { 'data-tip': `${status.ahead} to push` }, `↑${status.ahead}`) : null, status.behind ? h('b', { 'data-tip': `${status.behind} to pull` }, `↓${status.behind}`) : null)
-        : status.upstream
-          ? h('span', { class: 'sync' }, 'up to date')
-          : h('span', { class: 'sync' }, 'not published'),
+      h('span', { class: 'branch', 'data-tip': s.upstream ? `Tracking ${s.upstream}` : 'No upstream yet' }, icon('branch', 13), s.branch || 'HEAD'),
+      s.ahead || s.behind
+        ? h('span', { class: 'sync' }, s.ahead ? h('b', { 'data-tip': `${s.ahead} to push` }, `↑${s.ahead}`) : null, s.behind ? h('b', { 'data-tip': `${s.behind} to pull` }, `↓${s.behind}`) : null)
+        : h('span', { class: 'sync' }, s.upstream ? 'up to date' : s.remotes.length ? 'not pushed yet' : 'no remote'),
+      h('span', { class: 'push-right' }),
+      ...(files().length > 6
+        ? [h('input', { class: 'input small git-filter', placeholder: 'Filter files', value: filter, spellcheck: 'false', 'aria-label': 'Filter changed files', onInput: (e: Event) => ((filter = (e.target as HTMLInputElement).value), paintList(), paintStream()) })]
+        : []),
     )
   }
 
   const paintList = () => {
     if (!list) return
-    if (!status) return list.replaceChildren(h('div', { class: 'side-empty' }, 'Loading…'))
-    if (!status.repo) {
-      return list.replaceChildren(
+    const s = status()
+    list.hidden = !s?.repo || !files().length
+    if (!list.hidden) list.replaceChildren(...shown().map(fileRow))
+  }
+
+  const paintStream = () => {
+    if (!stream) return
+    const s = status()
+    watcher?.disconnect()
+    if (!s) return stream.replaceChildren(h('div', { class: 'side-empty' }, 'Loading…'))
+    if (!s.repo) {
+      return stream.replaceChildren(
         h(
           'div',
           { class: 'git-empty' },
           new Frog(84).el,
           h('p', null, 'This folder is not a git repository.'),
-          h('button', { class: 'btn', type: 'button', onClick: async () => cwd && (await croo.gitInit(cwd), await load()) }, icon('branch', 14), 'Initialize repository'),
+          h('button', { class: 'btn', type: 'button', onClick: async () => cwd && (await croo.gitInit(cwd), await refreshGit()) }, icon('branch', 14), 'Initialize repository'),
         ),
       )
     }
-    if (!files().length) return list.replaceChildren(h('div', { class: 'git-empty' }, new Frog(84, 'happy').el, h('p', null, 'Nothing to commit. Working tree clean.')))
-    const all = h('input', { class: 'check', type: 'checkbox', 'aria-label': 'Select all changes' })
-    all.checked = chosen().length === files().length
-    all.indeterminate = chosen().length > 0 && chosen().length < files().length
-    all.addEventListener('change', () => {
-      picked.clear()
-      if (all.checked) for (const f of files()) picked.add(f.path)
-      paintList()
-      paintFoot()
-    })
-    list.replaceChildren(h('div', { class: 'git-all' }, all, h('span', null, `${files().length} changed file${files().length === 1 ? '' : 's'}`)), ...files().map(fileRow))
+    if (!files().length) return stream.replaceChildren(h('div', { class: 'git-empty' }, new Frog(84, 'happy').el, h('p', null, 'Nothing to commit. Working tree clean.')))
+    const secs = shown().map(section)
+    stream.replaceChildren(...secs)
+    // Diffs load as they scroll into view, so a big change set opens instantly.
+    watcher = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue
+          const f = files().find((x) => x.path === (e.target as HTMLElement).dataset.path)
+          if (f) void load(f)
+          watcher?.unobserve(e.target)
+        }
+      },
+      { root: stream, rootMargin: '400px 0px' },
+    )
+    for (const el of secs) watcher.observe(el)
   }
 
-  const paintPublish = (noRemote: boolean) => {
+  const paintPublish = () => {
+    if (!publishCard) return
+    const s = status()
+    const noRemote = !!s?.repo && !s.remotes.length
     publishCard.hidden = !(noRemote && publishing)
-    if (publishCard.hidden || publishCard.dataset.built) return
-    publishCard.dataset.built = '1'
+    if (publishCard.hidden) return
     const name = h('input', { class: 'input small', value: (cwd ?? '').split('/').filter(Boolean).pop() ?? 'project', spellcheck: 'false', 'aria-label': 'Repository name' })
     let priv = true
     const vis = h('div', { class: 'seg mini' })
@@ -452,94 +436,67 @@ const gitPanel = (() => {
     const go = () => url.value.trim() && void publish({ remote: url.value })
     url.addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), go()))
     publishCard.replaceChildren(
-      h('div', { class: 'git-publish-title' }, 'Connect this folder to a remote'),
-      ...(status?.gh
+      h('div', { class: 'git-publish-title' }, 'Connect this folder to a remote', h('span', { class: 'push-right' }), h('button', { class: 'icon-btn small', type: 'button', title: 'Close', onClick: () => ((publishing = false), paintPublish()) }, icon('x', 13))),
+      ...(s?.gh
         ? [
             h('div', { class: 'inline-row' }, name, vis),
-            h('button', { class: 'btn primary', type: 'button', onClick: () => void publish({ name: name.value.trim(), isPrivate: priv }) }, icon('external', 14), 'Create on GitHub and push'),
+            h('button', { class: 'btn primary', type: 'button', disabled: busy, onClick: () => void publish({ name: name.value.trim(), isPrivate: priv }) }, busy ? h('span', { class: 'spinner' }) : icon('external', 14), 'Create on GitHub and push'),
             h('div', { class: 'git-or' }, 'or use an existing repository'),
           ]
-        : [h('p', { class: 'muted' }, 'Create an empty repository on GitHub (or anywhere), then paste its address here. Install the GitHub CLI (gh) to create one from this panel.')]),
-      h('div', { class: 'inline-row' }, url, h('button', { class: 'btn', type: 'button', onClick: go }, 'Connect & push')),
+        : [h('p', { class: 'muted' }, 'Create an empty repository on GitHub (or anywhere), then paste its address here. Install the GitHub CLI (gh) to create one from here.')]),
+      h('div', { class: 'inline-row' }, url, h('button', { class: 'btn', type: 'button', disabled: busy, onClick: go }, 'Connect & push')),
+      ...(note ? [h('pre', { class: `git-note ${note.ok ? 'ok' : 'bad'}` }, note.text)] : []),
     )
   }
 
-  const paintFoot = () => {
-    if (!foot) return
-    const n = chosen().length
-    const repo = !!status?.repo
-    foot.hidden = !repo
-    commitBtn.disabled = !!busy || suggesting || !message.trim() || n === 0
-    aiBtn.disabled = !!busy || suggesting || n === 0
-    aiBtn.replaceChildren(suggesting ? h('span', { class: 'spinner' }) : icon('sparkle', 15))
-    commitBtn.replaceChildren(busy === 'commit' ? h('span', { class: 'spinner' }) : icon('check', 14), `Commit${n ? ` (${n})` : ''}`)
-    const ahead = status?.ahead ?? 0
-    pushBtn.disabled = !!busy || !!(status?.upstream && ahead === 0)
-    pushBtn.replaceChildren(busy === 'push' ? h('span', { class: 'spinner' }) : icon('arrowUp', 14), 'Push', ...(ahead ? [h('small', null, `${ahead}`)] : []))
-    const noRemote = !!status?.repo && !status.remotes.length
-    if (noRemote) pushBtn.replaceChildren(busy === 'push' ? h('span', { class: 'spinner' }) : icon('external', 14), 'Publish…')
-    pushBtn.disabled = !!busy
-    pushBtn.dataset.tip = noRemote ? 'Connect this folder to GitHub' : status?.upstream ? `Push to ${status.upstream}` : 'Publish this branch to origin'
-    paintPublish(noRemote)
-    pullBtn.disabled = !!busy || !status?.upstream
-    pullBtn.replaceChildren(busy === 'pull' ? h('span', { class: 'spinner' }) : icon('arrowDown', 14))
-    noteEl.hidden = !note
-    noteEl.className = `git-note ${note?.ok ? 'ok' : 'bad'}`
-    noteEl.textContent = note?.text ?? ''
-  }
-
   const paint = () => {
-    if (!list?.isConnected) return
+    if (!stream?.isConnected) return
+    const s = status()
+    // A file that is no longer changed, or whose line counts moved, loses its cached diff.
+    const now = new Map((s?.files ?? []).map((f) => [f.path, `${f.index}${f.work}${f.add}/${f.del}`]))
+    for (const p of [...diffs.keys()]) if (now.get(p) !== seen.get(p)) diffs.delete(p)
+    for (const [p, sig] of now) seen.set(p, sig)
+    const title = panel.querySelector('.side-title')
+    if (title) title.textContent = s?.files.length ? `Changes ${s.files.length}` : 'Changes'
     paintTop()
+    paintPublish()
     paintList()
-    paintFoot()
+    paintStream()
   }
 
   const view = (): HTMLElement => {
     top = h('div', { class: 'git-top' })
-    list = h('div', { class: 'git-list' })
-    box = h('textarea', {
-      class: 'git-msg',
-      rows: 2,
-      placeholder: 'Commit message',
-      spellcheck: 'true',
-      onInput: () => ((message = box!.value), paintFoot()),
-      onKeydown: (e: KeyboardEvent) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && (e.preventDefault(), void run('commit')),
-    })
-    box.value = message
-    aiBtn = h('button', { class: 'git-ai', type: 'button', title: 'Write the message with AI', onClick: () => void suggest() })
-    commitBtn = h('button', { class: 'btn primary grow', type: 'button', title: 'Commit the selected files (⌘↵)', onClick: () => void run('commit') })
-    pushBtn = h('button', { class: 'btn grow', type: 'button', onClick: () => (status && !status.remotes.length ? ((publishing = !publishing), paintFoot()) : void run('push')) })
-    pullBtn = h('button', { class: 'btn icon', type: 'button', title: 'Pull (fast-forward only)', onClick: () => void run('pull') })
-    noteEl = h('pre', { class: 'git-note', hidden: true })
+    list = h('div', { class: 'git-files', role: 'list' })
+    stream = h('div', { class: 'git-stream' })
     publishCard = h('div', { class: 'git-publish', hidden: true })
-    foot = h('div', { class: 'git-foot' }, publishCard, h('div', { class: 'git-msg-wrap' }, box, aiBtn), h('div', { class: 'git-actions' }, commitBtn, pushBtn, pullBtn), noteEl)
     const el = h(
       'div',
-      { class: 'side-col' },
-      head('Git', h('button', { class: 'icon-btn small no-drag', type: 'button', title: 'Refresh', onClick: () => void load() }, icon('refresh', 15))),
+      { class: 'side-col changes' },
+      head('Changes', h('button', { class: 'icon-btn small no-drag', type: 'button', title: 'Refresh', onClick: () => (diffs.clear(), void refreshGit()) }, icon('refresh', 15))),
       top,
+      publishCard,
       list,
-      foot,
+      stream,
     )
-    paint()
-    void load()
+    queueMicrotask(paint)
     return el
   }
 
+  onGitStatus(() => paint())
+
   return {
     view,
-    apply,
+    publish(on: boolean) {
+      publishing = on
+      paintPublish()
+    },
     reset() {
-      status = null
-      picked.clear()
-      known.clear()
-      open.clear()
       diffs.clear()
-      message = ''
+      seen.clear()
+      filter = ''
+      focus = null
       note = null
       publishing = false
-      setBadge(0)
     },
   }
 })()

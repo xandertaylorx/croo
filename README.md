@@ -53,7 +53,7 @@ In 0.16.1, Croo's task list sits above the message box and ticks off as it works
 | **Checks its own work** | Edited TypeScript, JavaScript, Python, JSON and Go files are checked right away, and errors go straight back to the agent. Dev servers run in the background, and a built-in `browser` tool opens them, clicks through them, reads console errors and takes screenshots. |
 | **Subagents** | The `task` tool sends broad research to read-only subagents with fresh context, several at once, and only their reports come back. |
 | **Commands, skills, hooks** | `.croo/commands/*.md` become `/commands`. `.croo/skills/*/SKILL.md` are skills the agent loads when relevant. `.croo/hooks.json` runs your scripts before or after tools, on each prompt, or before the agent stops. Project hooks run only once you trust them. The `.claude/` folders work too. |
-| **Git, built in** | Branch and sync state, changed files with `+/−` counts, inline diffs, pick what to commit, **Commit**, **Push**, **Pull**. No remote yet? **Publish** connects one by URL or `owner/repo`, or creates it on GitHub with `gh`. Failures come with a plain-language fix. |
+| **Git, built in** | A `3 +40 −2` summary and a **Commit & push** button in the header that does the next sensible thing (commit with an AI-written message and push, pull, push, publish, or open a pull request). A Changes panel shows every diff. No remote yet? **Publish** connects one by URL or `owner/repo`, or creates it on GitHub with `gh`. Failures come with a plain-language fix and **Fix in chat**. |
 | **Run code from the chat** | Shell, Python and Node snippets in a reply get a **Run** button. Output streams under the block with exit code and timing, and **Stop** while it runs. |
 | **Files and Browser** | A `.gitignore`-aware file tree with a syntax-highlighted viewer that wraps long lines, and an in-app browser whose start page finds the dev servers running on your machine. |
 | **Terminal** | A real shell in the folder (`⌘J`), with tabs (`⌘T`). |
@@ -102,7 +102,7 @@ First launch walks you through picking a provider and pasting a key, or choose *
 
 ### Git
 
-Tick the files you want, write a message, **Commit** (`⌘↵`), then **Push**. A new branch is published for you. **Pull** is fast-forward only, so it never makes a surprise merge. If a folder is not a repository, one click runs `git init`.
+The button at the top right reads the repository and offers one action: **Commit & push** when there are changes (everything is committed, with a message the selected model writes from the diff), **Pull**, **Push**, **Publish**, or **Create PR** on a pushed feature branch (needs `gh`). Its menu has the rest. The `3 +40 −2` summary beside it opens the Changes panel (`⌘⇧G`): the changed files on top, every diff below. A new branch is published for you. **Pull** is fast-forward only, so it never makes a surprise merge. If a folder is not a repository, one click runs `git init`.
 
 ### Reasoning
 
@@ -120,7 +120,7 @@ Keys are encrypted with the OS keychain before they are written to `~/.config/cr
 | --- | --- | --- | --- |
 | `⌘1` / `⌘2` | Chat / Code | `⌘J` | Terminal (`⌘T` new tab) |
 | `⌘N` | New chat | `⌘⇧E` | Files |
-| `⌘O` | Add folder | `⌘⇧G` | Git |
+| `⌘O` | Add folder | `⌘⇧G` | Changes |
 | `⌘B` | Sidebar | `⌘⇧B` | Browser |
 | `⌘K` | Search | `@` | Mention a file |
 | `⇧Tab` | Permission mode | `⌘↵` / `esc` | Allow / deny |

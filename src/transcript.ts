@@ -51,7 +51,7 @@ export function toItems(messages: Msg[]): Item[] {
   for (const m of messages) {
     if (m.summaryBefore) items.push({ kind: 'note', text: COMPACTED_NOTE, detail: m.summaryBefore })
     if (m.role === 'user' && m.auto) items.push({ kind: 'note', text: autoNote(m) })
-    else if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m) })
+    else if (m.role === 'user') items.push({ kind: 'user', text: m.display ?? m.content, attachments: viewAttachments(m), seconds: m.seconds })
     else if (m.role === 'assistant') {
       if (m.thinking?.trim()) items.push({ kind: 'thinking', text: m.thinking, done: true })
       if (m.content.trim()) items.push({ kind: 'assistant', text: m.content })

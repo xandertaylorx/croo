@@ -33,8 +33,8 @@ import { cancelDownload, deleteModel, downloadState, engineInstalled, ensureEngi
 import { createProvider } from '../providers/index.js'
 import { checkProfile, listModels } from '../providers/models.js'
 import { PRESETS } from '../providers/presets.js'
-import { deleteSession, listSessions, loadSession, newSession, saveSession, titleFrom, type Session, type SessionMeta } from '../session.js'
-import type { AddProfileRequest, AppState, Attachment, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result, RunKind, UpdateInfo } from '../shared/ipc.js'
+import { addUsage, deleteSession, listSessions, loadSession, newSession, saveSession, titleFrom, type Session, type SessionMeta } from '../session.js'
+import type { AddProfileRequest, AppState, Attachment, ChatEvent, ChatInfo, ChatKind, Command, FsEntry, FsFile, Result, RunKind, ToolInfo, UpdateInfo } from '../shared/ipc.js'
 import { Ignore } from '../tools/ignore.js'
 import { safePath } from '../tools/index.js'
 import { clip, rewindTo, toItems, toPreviewDto, typedCount } from '../transcript.js'
@@ -43,7 +43,7 @@ import { expandMentions, fileBlock, searchFiles } from '../mentions.js'
 import { priceFor } from '../pricing.js'
 import { readAttachments } from './attachments.js'
 import { checkLatest, GITHUB_REPO, runningBundle, stageUpdate } from './updates.js'
-import { gitCommit, gitConnect, gitDiff, gitInit, gitPublish, gitPull, gitPush, gitStatus } from './git.js'
+import { gitCommit, gitConnect, gitCreatePr, gitDiff, gitInit, gitPublish, gitPull, gitPush, gitStatus } from './git.js'
 import { Runner } from './runner.js'
 import { Terminals } from './terminal.js'
 import type { AttachedFile, Config, ImageAtt, McpServerConfig, Msg, PermissionMode, Profile } from '../types.js'
@@ -320,6 +320,13 @@ function buildUserMessage(text: string, atts: Attachment[], plain: boolean, cwd:
   return msg
 }
 
+/** A tool's description cut to its first sentence, for the tools list under the message box. */
+const firstSentence = (text: string) => {
+  const t = text.replace(/\s+/g, ' ').trim()
+  const end = t.search(/[.!?](\s|$)/)
+  return end > 0 && end < 160 ? t.slice(0, end + 1) : t.length > 160 ? `${t.slice(0, 159)}…` : t
+}
+
 /** What the agent can use in Code mode. Plan mode swaps in read-only tools and propose_plan. */
 function codeTools(rt: Runtime, skills: boolean): Tool[] {
   const all = [...TOOLS, taskTool, ...(skills ? [skillTool] : []), browserTool, ...mcp.tools()]
@@ -371,6 +378,11 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
   const userCtx: UserContext = { name: cfg.userName || undefined, memory: cfg.memory !== false ? loadMemory() : undefined, canRemember: plain && cfg.memory !== false && !demo }
   const identity = demo || !active ? undefined : { model: active[1].model, provider: active[0] }
 
+  const onUsage = (u: { input: number; output: number; cacheRead?: number; cacheWrite?: number }) => {
+    session.usage = addUsage(session.usage, u)
+    emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite })
+  }
+
   const ask = (name: string, preview: import('../tools/index.js').Preview) =>
     new Promise<'y' | 'n' | 'a'>((resolve) => {
       const id = Math.random().toString(36).slice(2)
@@ -421,7 +433,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
             textEnd: () => emit({ chatId, type: 'textEnd' }),
             toolRunning: (name, summary) => emit({ chatId, type: 'toolRunning', name, summary }),
             toolDone: (name, summary, ok, result) => emit({ chatId, type: 'toolDone', name, summary, ok, result: clip(result) }),
-            usage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
+            usage: onUsage,
             context: (used) => {
               session.context = { used, window: win }
               emit({ chatId, type: 'context', used, window: win })
@@ -466,7 +478,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
             emit({ chatId, type: 'planApproved' })
           },
           onNote: (text) => emit({ chatId, type: 'note', text }),
-          onUsage: (u) => emit({ chatId, type: 'usage', input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite }),
+          onUsage,
           onCompacted: (summary) => emit({ chatId, type: 'compacted', summary }),
           onContext: (used) => {
             session.context = { used, window: window ?? 0 }
@@ -474,6 +486,7 @@ function startTurn(chatId: string, rt: Runtime, text: string, atts: Attachment[]
           },
         },
       })
+      if (userMsg.role === 'user') userMsg.seconds = Math.round((Date.now() - t0) / 100) / 10
       emit({ chatId, type: 'done', seconds: (Date.now() - t0) / 1000 })
       notifyAway(chatId, session, `Finished in ${Math.max(1, Math.round((Date.now() - t0) / 1000))}s`)
     } catch (e: any) {
@@ -582,7 +595,17 @@ function registerIpc() {
   })
   ipcMain.handle('chat:open', (_e, id: string) => {
     const rt = runtime(id)
-    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages), context: rt.session.context, checkpoints: rt.checkpoints.turnsWithChanges() } : null
+    return rt ? { cwd: rt.session.cwd, kind: rt.session.kind === 'chat' ? ('chat' as const) : ('code' as const), title: titleFrom(rt.session.messages), items: toItems(rt.session.messages), context: rt.session.context, checkpoints: rt.checkpoints.turnsWithChanges(), usage: rt.session.usage } : null
+  })
+  ipcMain.handle('tools:list', (_e, id: string): ToolInfo[] => {
+    const rt = runtime(id)
+    if (!rt) return []
+    const plain = rt.session.kind === 'chat'
+    const list = plain ? [webFetch, ...CHAT_TOOLS, ...(cfg.memory !== false ? [rememberTool] : [])] : codeTools(rt, loadSkills(rt.session.cwd).length > 0)
+    return list.map((t) => {
+      const [, server] = t.spec.name.startsWith('mcp__') ? t.spec.name.split('__') : []
+      return { name: t.spec.name, description: firstSentence(t.spec.description), server }
+    })
   })
   ipcMain.handle('chat:delete', (_e, id: string) => {
     const rt = runtimes.get(id)
@@ -962,6 +985,7 @@ function registerIpc() {
   ipcMain.handle('git:pull', (_e, cwd: string) => (inWorkspace(cwd), gitPull(cwd)))
   ipcMain.handle('git:init', (_e, cwd: string) => (inWorkspace(cwd), gitInit(cwd)))
   ipcMain.handle('git:connect', (_e, cwd: string, remote: string) => (inWorkspace(cwd), gitConnect(cwd, remote)))
+  ipcMain.handle('git:pr', (_e, cwd: string) => (inWorkspace(cwd), gitCreatePr(cwd)))
   ipcMain.handle('git:publish', (_e, cwd: string, name: string, isPrivate: boolean) => (inWorkspace(cwd), gitPublish(cwd, name, !!isPrivate)))
   ipcMain.handle('run:start', (_e, cwd: string, kind: RunKind, code: string) => {
     inWorkspace(cwd)

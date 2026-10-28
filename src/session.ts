@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { dataDir } from './config.js'
+import type { TokenCount } from './shared/ipc.js'
 import type { Msg } from './types.js'
 
 export interface Session {
@@ -16,6 +17,18 @@ export interface Session {
   cli?: { id: string; session: string }
   /** Tokens the last request used and the model's window, for the context ring. */
   context?: { used: number; window: number }
+  /** Every token the chat has used so far, for the totals under the message box. */
+  usage?: TokenCount
+}
+
+/** Add one request's usage to a chat's running totals. */
+export function addUsage(t: TokenCount | undefined, u: TokenCount): TokenCount {
+  return {
+    input: (t?.input ?? 0) + u.input,
+    output: (t?.output ?? 0) + u.output,
+    cacheRead: (t?.cacheRead ?? 0) + (u.cacheRead ?? 0),
+    cacheWrite: (t?.cacheWrite ?? 0) + (u.cacheWrite ?? 0),
+  }
 }
 
 export interface SessionMeta {

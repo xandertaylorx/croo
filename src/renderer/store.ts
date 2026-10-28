@@ -1,4 +1,4 @@
-import type { AppState, Attachment, ChatKind, Command, CrooApi, Item, UpdateProgress } from '../shared/ipc.js'
+import type { AppState, Attachment, ChatKind, Command, CrooApi, Item, TokenCount, UpdateProgress } from '../shared/ipc.js'
 
 declare global {
   interface Window {
@@ -27,7 +27,9 @@ export interface ChatView {
   streamed?: number
   /** Files and images waiting in the message box. */
   attachments?: Attachment[]
-  /** How full the model's context was after the last request, for the ring in the header. */
+  /** Every token the chat has used, for the totals under the message box. */
+  usage?: TokenCount
+  /** How full the model's context was after the last request, for the ring under the message box. */
   context?: { used: number; window: number }
   /** The pinned task list: opened or closed by hand (undefined follows the list), and a finished list the user hid. */
   tasksOpen?: boolean
@@ -43,8 +45,6 @@ export const store = {
   /** Chat mode (plain conversations) or Code mode (folders and the agent). */
   mode: 'code' as ChatKind,
   active: null as string | null,
-  /** Changed files in the current folder (drives the badge on the Git button). */
-  gitCount: 0,
   views: new Map<string, ChatView>(),
 }
 
@@ -61,6 +61,10 @@ export const bus = {
   files: () => {},
   browser: () => {},
   git: () => {},
+  /** Open the Changes panel (not toggle), optionally on the card that connects a remote. */
+  changes: (_opts?: { publish?: boolean }) => {},
+  /** Look at the repository again. */
+  gitRefresh: async () => {},
   /** Insert text into the open composer, e.g. a file mention. */
   insert: (_text: string) => {},
 }

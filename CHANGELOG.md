@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.0
+
+- **Commit & push in the header**: a `3 +589 −2` summary and a split button at the top right that does the next sensible thing: commit everything with an AI-written message and push, pull, push, publish, or open a pull request with `gh`. Commit, Push, Pull and Create pull request are in its menu. A failure shows what git said and a **Fix in chat** button
+- **Changes panel**: the Git panel is now a diff viewer, with the changed files on top (filterable once there are many) and every file's diff below, loaded as you scroll. No more commit form taking up the panel
+- **Worked for…**: each reply shows "Working for 12s" while it runs, then folds its work under "Worked for 2m 31s · Edited 3 files and ran 4 commands", with the answer below
+- **A clearer work log**: every step gets a coloured dot for its kind (thinking, reading, editing, commands, search, web), joined into a timeline, and calls of one kind in a row share a line ("Read 3 files") that opens to show each
+- **New message box**: attach, model, effort, tools and permission mode sit inside the box. A strip below shows the folder, branch, tokens in and out, cost and how full the context is (with a percentage)
+- **Tools list**: the wrench button shows what Croo can use in this chat, grouped by built-in and MCP server, and how often this chat used each
+- **Kept with the chat**: token totals and how long each turn took are saved, so they come back when you reopen a chat
+
 ## 0.23.0
 
 - **New app icon**: the green frog, a little smaller, on a solid black tile

@@ -29,22 +29,22 @@ const PRIORITY: Action[] = ['edit', 'command', 'read', 'search', 'web', 'other']
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
-/** Files and pages are counted once however many times they were touched. */
-function label(action: Action, items: ToolItem[]): string {
+/** Files and pages are counted once however many times they were touched. `live` words it as still going. */
+export function label(action: Action, items: ToolItem[], live = false): string {
   const distinct = new Set(items.map((i) => i.summary)).size
   switch (action) {
     case 'edit':
-      return `Edited ${plural(distinct, 'file')}`
+      return `${live ? 'Editing' : 'Edited'} ${plural(distinct, 'file')}`
     case 'command':
-      return `Ran ${plural(items.length, 'command')}`
+      return `${live ? 'Running' : 'Ran'} ${plural(items.length, 'command')}`
     case 'read':
-      return `Read ${plural(distinct, 'file')}`
+      return `${live ? 'Reading' : 'Read'} ${plural(distinct, 'file')}`
     case 'search':
-      return `Ran ${plural(items.length, 'search', 'searches')}`
+      return live ? `Searching (${items.length})` : `Ran ${plural(items.length, 'search', 'searches')}`
     case 'web':
-      return `Opened ${plural(distinct, 'page')}`
+      return `${live ? 'Opening' : 'Opened'} ${plural(distinct, 'page')}`
     case 'other':
-      return `Used ${plural(items.length, 'tool')}`
+      return `${live ? 'Using' : 'Used'} ${plural(items.length, 'tool')}`
   }
 }
 
@@ -85,3 +85,34 @@ export function changedFiles(items: Item[]): string[] {
  * else (a message, a note, an approval card, an error) closes it.
  */
 export const groupable = (item: Item) => (item.kind === 'tool' && item.name !== 'todo_write') || item.kind === 'thinking'
+
+/**
+ * Which row of the work log an item joins. Calls of the same kind in a row share one ("Read 3 files"); each
+ * thought gets its own, and tools without a kind of their own only join calls to the very same tool.
+ */
+export function activityKind(item: Item): string {
+  if (item.kind === 'thinking') return 'think'
+  if (item.kind !== 'tool') return item.kind
+  const a = actionOf(item.name)
+  return a === 'other' ? `other:${item.name}` : a
+}
+
+/**
+ * Where a turn's answer starts: everything after its last piece of work (a tool call, a thought or an approval).
+ * What comes before is the work, folded under "Worked for…"; a turn with no work at all is all answer.
+ */
+export function answerStart(items: Item[]): number {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const k = items[i].kind
+    if (k === 'tool' || k === 'thinking' || k === 'confirm') return i + 1
+  }
+  return 0
+}
+
+/** "4s", "2m 31s": how long a turn worked. */
+export function workedFor(seconds: number): string {
+  if (seconds < 1) return 'a moment'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const m = Math.floor(seconds / 60)
+  return m < 60 ? `${m}m ${Math.round(seconds % 60)}s` : `${Math.floor(m / 60)}h ${m % 60}m`
+}

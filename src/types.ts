@@ -18,6 +18,8 @@ export type Msg = (
       attached?: AttachedFile[]
       /** Written by Croo, not typed (e.g. a Stop hook's feedback). Shown as a note and not counted as a turn. */
       auto?: boolean
+      /** How long the turn this message started took, for the "Worked for" line when the chat is reopened. */
+      seconds?: number
     }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; thinking?: string; /** Provider data that must round-trip, e.g. Anthropic's signed thinking blocks. */ meta?: unknown }
   | { role: 'tool'; toolCallId: string; name: string; content: string; isError?: boolean; /** e.g. a browser screenshot, for models that can see. */ images?: ImageAtt[]; /** A visual for the chat (weather, map...), kept so the chat shows it again when reopened. */ card?: Card }
