@@ -24,6 +24,18 @@
   <symbol id="frog" viewBox="0 0 15 8"><path d="M1 0h5v2h-5zM9 0h5v2h-5zM0 2h15v4h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/><g style="fill:var(--mark-face)"><rect x="3" y="1" width="1" height="2"/><rect x="11" y="1" width="1" height="2"/><rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></symbol>
 </svg>
 
+<div class="dock" inert>
+  <a class="brand" href="#top" aria-label="Back to top"><svg class="mark" shape-rendering="crispEdges"><use href="#frog"/></svg>Croo</a>
+  <nav aria-label="Sections">
+    <a href="#tour">Tour</a>
+    <a href="#models">Models</a>
+    <a href="#control">Control</a>
+    <a href="#chat">Chat</a>
+  </nav>
+  <button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg></button>
+  <a class="btn dark" href="#download">Download</a>
+</div>
+
 <main id="top">
 
   <!-- 1. Split hero: copy on white, terminal floating on fluted glass -->
@@ -62,9 +74,9 @@
         <div class="term-bar"><i></i><i></i><i></i><span>Terminal</span><button class="copy" type="button" data-copy="#cmd-install"><span class="lbl">Copy</span></button></div>
         <pre class="term-body"><span class="k">curl</span> <span id="cmd-install">-fsSL https://ai.crooli.com/install.sh | bash</span>
 
-<span class="c">→ Downloading Croo <span class="ver">latest</span> for Apple Silicon</span>
-<span class="c">→ Installing into /Applications</span>
-<span class="ok">✓ Opened Croo.app</span>  <span class="c">no “damaged app” prompt</span></pre>
+<span class="out"><span class="c">→ Downloading Croo <span class="ver">latest</span> for Apple Silicon</span></span>
+<span class="out"><span class="c">→ Installing into /Applications</span></span>
+<span class="out"><span class="ok">✓ Opened Croo.app</span>  <span class="c">no “damaged app” prompt</span></span></pre>
       </div>
     </div>
   </section>
@@ -91,13 +103,14 @@
 
     <article class="tile card modes">
       <h3>Four permission modes</h3>
-      <p>Pick how much it may do alone. Change it mid-chat.</p>
+      <p>Pick how much it may do alone. <kbd>⇧</kbd><kbd>Tab</kbd> switches mid-chat.</p>
       <ul class="chips-lg">
-        <li><b>Manual</b><span>asks every time</span></li>
-        <li><b>Auto</b><span>asks when risky</span></li>
-        <li><b>Plan</b><span>reads, then proposes</span></li>
-        <li><b>Bypass</b><span>never asks</span></li>
+        <li><button type="button" aria-pressed="true" data-desc="Every edit and every command waits for your yes, with the exact diff on screen."><b>Manual</b><span>asks every time</span></button></li>
+        <li><button type="button" aria-pressed="false" data-desc="Reads, edits and runs safe commands by itself, and asks about anything else."><b>Auto</b><span>asks when risky</span></button></li>
+        <li><button type="button" aria-pressed="false" data-desc="Researches first and changes nothing until you approve the plan."><b>Plan</b><span>reads, then proposes</span></button></li>
+        <li><button type="button" aria-pressed="false" data-desc="Never asks. For when you trust the plan and want it done."><b>Bypass</b><span>never asks</span></button></li>
       </ul>
+      <p class="mode-desc" aria-live="polite">Every edit and every command waits for your yes, with the exact diff on screen.</p>
     </article>
 
     <article class="tile media panel">
@@ -139,7 +152,7 @@
   </section>
 
   <!-- 4. Split, reversed: chat cards floating on violet -->
-  <section class="frame split">
+  <section id="control" class="frame split">
     <div class="split-art panel">
       <canvas class="shader" data-mode="silk" data-palette="plum" aria-hidden="true"></canvas>
       <figure class="app float" data-w="1000" data-h="680">
@@ -159,7 +172,7 @@
   </section>
 
   <!-- 5. Chat mode, split again -->
-  <section class="frame split flip">
+  <section id="chat" class="frame split flip">
     <div class="split-copy">
       <div class="split-main">
         <h2 class="display">For questions<br /><span class="dim">that aren’t code.</span></h2>

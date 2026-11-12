@@ -26,7 +26,7 @@ const SEEDS = { frog: 1.3, moss: 4.1, lapis: 7.7, amber: 2.9, plum: 5.5, pond: 9
 const VERT = `attribute vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }`
 const FRAG = `
 precision highp float;
-uniform vec2 uRes; uniform float uTime; uniform float uMode; uniform float uSeed;
+uniform vec2 uRes; uniform float uTime; uniform float uMode; uniform float uSeed; uniform vec3 uMouse;
 uniform vec3 uC0; uniform vec3 uC1; uniform vec3 uC2; uniform vec3 uC3;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -57,6 +57,10 @@ void main(){
   vec2 p = vec2(uv.x * aspect, uv.y) * 1.6;
   float t = uTime;
   vec3 col;
+  // The pointer bends the field like a lens and lifts the light a little under it.
+  vec2 ua = vec2(uv.x * aspect, uv.y), ma = vec2(uMouse.x * aspect, uMouse.y);
+  float glow = uMouse.z * exp(-dot(ua - ma, ua - ma) * 6.0);
+  p += (ua - ma) * glow * 0.9;
 
   if (uMode < 0.5) {
     // Fluted glass: vertical ribs, wide on the left and tighter to the right, each refracting the field.
@@ -87,6 +91,7 @@ void main(){
     col += ribbon * 0.05;
   }
 
+  col += glow * 0.07;
   col += (hash(gl_FragCoord.xy + fract(t) * 91.0) - 0.5) * 0.035; // film grain
   gl_FragColor = vec4(col, 1.0);
 }`
@@ -114,9 +119,9 @@ function makeRenderer() {
   const loc = gl.getAttribLocation(prog, 'p')
   gl.enableVertexAttribArray(loc)
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-  const u = Object.fromEntries(['uRes', 'uTime', 'uMode', 'uSeed', 'uC0', 'uC1', 'uC2', 'uC3'].map((n) => [n, gl.getUniformLocation(prog, n)]))
+  const u = Object.fromEntries(['uRes', 'uTime', 'uMode', 'uSeed', 'uMouse', 'uC0', 'uC1', 'uC2', 'uC3'].map((n) => [n, gl.getUniformLocation(prog, n)]))
 
-  return function draw(w, h, mode, palette, time) {
+  return function draw(w, h, mode, palette, time, mouse) {
     if (glc.width !== w || glc.height !== h) {
       glc.width = w
       glc.height = h
@@ -127,6 +132,7 @@ function makeRenderer() {
     gl.uniform1f(u.uTime, time)
     gl.uniform1f(u.uMode, mode === 'fluted' ? 0 : 1)
     gl.uniform1f(u.uSeed, SEEDS[palette] || 0)
+    gl.uniform3fv(u.uMouse, mouse || [0.5, 0.5, 0])
     pal.forEach((c, i) => gl.uniform3fv(u[`uC${i}`], hex(c)))
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     return glc
@@ -147,6 +153,8 @@ if (draw) {
     mode: el.dataset.mode,
     palette: el.dataset.palette,
     visible: false,
+    mouse: [0.5, 0.5, 0], // x, y, strength: eased toward `aim` each frame
+    aim: [0.5, 0.5, 0],
   }))
   const SCALE = 0.5 // soft imagery: half resolution is indistinguishable and four times cheaper
 
@@ -158,7 +166,8 @@ if (draw) {
       pn.el.width = w
       pn.el.height = h
     }
-    pn.ctx.drawImage(draw(w, h, pn.mode, pn.palette, time), 0, 0)
+    for (let i = 0; i < 3; i++) pn.mouse[i] += (pn.aim[i] - pn.mouse[i]) * 0.12
+    pn.ctx.drawImage(draw(w, h, pn.mode, pn.palette, time, pn.mouse), 0, 0)
   }
 
   const io = new IntersectionObserver((entries) => {
@@ -170,6 +179,17 @@ if (draw) {
   })
   panels.forEach((pn) => io.observe(pn.el))
   panels.forEach((pn) => paint(pn, 0))
+
+  if (!reduceMotion && matchMedia('(hover: hover)').matches) {
+    for (const pn of panels) {
+      const host = pn.el.parentElement
+      host.addEventListener('pointermove', (e) => {
+        const r = pn.el.getBoundingClientRect()
+        pn.aim = [(e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height, 1]
+      })
+      host.addEventListener('pointerleave', () => (pn.aim[2] = 0))
+    }
+  }
 
   if (!reduceMotion) {
     let last = 0
@@ -189,8 +209,8 @@ if (draw) {
     const still = draw(1400, 520, 'silk', 'mark', 12.0)
     const url = still.toDataURL('image/jpeg', 0.9)
     giant.style.backgroundImage = `repeating-linear-gradient(-28deg, rgba(255,255,255,.10) 0 1px, transparent 1px 4px), url(${url})`
-    giant.style.backgroundSize = 'auto, cover'
-    giant.style.backgroundPosition = 'center'
+    giant.style.backgroundSize = 'auto, 220% 100%'
+    giant.style.backgroundPosition = '0 0, 0% 50%'
   }
 }
 
@@ -213,7 +233,33 @@ fitApps()
 new ResizeObserver(fitApps).observe(document.body)
 
 /* ---------------- reveal on scroll ---------------- */
-const revealables = document.querySelectorAll('.stage-head, .stage .app, .bento > .tile, .split-art, .split-main, .giant, .wm-foot')
+// Headlines rise line by line out of a mask: each <br>-separated line gets its own clipping box.
+document.querySelectorAll('.display, .h2').forEach((h) => {
+  const lines = [[]]
+  for (const node of [...h.childNodes]) {
+    if (node.nodeName === 'BR') lines.push([])
+    else lines[lines.length - 1].push(node)
+  }
+  h.textContent = ''
+  lines.forEach((nodes, i) => {
+    const line = document.createElement('span')
+    const inner = document.createElement('span')
+    line.className = 'line'
+    inner.className = 'line-in'
+    inner.style.setProperty('--i', i)
+    inner.append(...nodes)
+    line.append(inner)
+    h.append(line)
+  })
+  h.classList.add('split-lines')
+})
+// The hero headline plays on load; the rest wait to be scrolled to.
+setTimeout(() => $('.hero .display')?.classList.add('in'), 60)
+
+const clipped = '.stage, .hero-tile, .bento > .media, .split-art'
+const revealables = document.querySelectorAll(
+  `${clipped}, .split-lines:not(.hero .display), .stage .kicker, .stage .app, .bento > .card, .bento > .code, .split-main > :not(.display), .giant, .wm-foot, .installs`,
+)
 const rio = new IntersectionObserver(
   (entries) => {
     for (const e of entries) {
@@ -226,6 +272,7 @@ const rio = new IntersectionObserver(
 )
 revealables.forEach((el, i) => {
   el.classList.add('reveal')
+  if (el.matches(clipped)) el.classList.add('clip')
   if (el.parentElement?.classList.contains('bento')) el.style.transitionDelay = `${(i % 4) * 70}ms`
   rio.observe(el)
 })
@@ -279,7 +326,7 @@ document.querySelectorAll('[data-copy]').forEach((btn) => {
   btn.addEventListener('click', async () => {
     const target = $(btn.dataset.copy)
     // The hero terminal splits "curl" from its arguments for colouring.
-    const text = (target.id === 'cmd-install' ? 'curl ' : '') + target.textContent
+    const text = (target.id === 'cmd-install' ? 'curl ' : '') + (target.dataset.full || target.textContent)
     try {
       await navigator.clipboard.writeText(text)
       label.textContent = 'Copied'
@@ -338,12 +385,115 @@ function applyTheme(theme) {
 const currentTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
 document.querySelectorAll('.app iframe').forEach((f) => f.addEventListener('load', () => themeMock(f, currentTheme())))
 document.querySelectorAll('.theme-toggle').forEach((b) =>
-  b.addEventListener('click', () => {
+  b.addEventListener('click', (e) => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark'
-    applyTheme(next)
+    // Where supported, the new theme spreads out from the button as a circle.
+    if (document.startViewTransition && !reduceMotion) {
+      const r = b.getBoundingClientRect()
+      const root = document.documentElement.style
+      root.setProperty('--vx', `${e.clientX || r.left + r.width / 2}px`)
+      root.setProperty('--vy', `${e.clientY || r.top + r.height / 2}px`)
+      document.startViewTransition(() => applyTheme(next))
+    } else applyTheme(next)
     try {
       localStorage.setItem('croo.theme', next)
     } catch {}
   }),
 )
 applyTheme(currentTheme())
+
+/* ---------------- motion and small interactions ---------------- */
+
+// The hero terminal types its command, then prints the output a line at a time.
+const cmd = $('#cmd-install')
+if (cmd && !reduceMotion) {
+  const full = cmd.textContent
+  const outs = document.querySelectorAll('.term .out')
+  cmd.dataset.full = full
+  cmd.textContent = ''
+  cmd.classList.add('typing')
+  outs.forEach((o) => o.classList.add('wait'))
+  let i = 0
+  const tick = () => {
+    cmd.textContent = full.slice(0, ++i)
+    if (i < full.length) return setTimeout(tick, 14 + Math.random() * 30)
+    setTimeout(() => cmd.classList.remove('typing'), 500)
+    outs.forEach((o, k) => setTimeout(() => o.classList.remove('wait'), 450 + k * 480))
+  }
+  setTimeout(tick, 1400)
+}
+
+// Permission modes: pick one to read what it does.
+const modeDesc = $('.mode-desc')
+document.querySelectorAll('.chips-lg button').forEach((btn, _, all) =>
+  btn.addEventListener('click', () => {
+    all.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)))
+    modeDesc.textContent = btn.dataset.desc
+  }),
+)
+
+// Cards light up under the pointer.
+document.querySelectorAll('.card').forEach((card) =>
+  card.addEventListener('pointermove', (e) => {
+    const r = card.getBoundingClientRect()
+    card.style.setProperty('--mx', `${e.clientX - r.left}px`)
+    card.style.setProperty('--my', `${e.clientY - r.top}px`)
+  }),
+)
+
+// The floating bar appears once the hero's own nav has scrolled away, and marks the section in view.
+const dock = $('.dock')
+const dockLinks = [...dock.querySelectorAll('nav a')]
+const sectionIO = new IntersectionObserver(
+  (entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue
+      dockLinks.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === `#${e.target.id}`))
+    }
+  },
+  { rootMargin: '-45% 0px -45% 0px' },
+)
+document.querySelectorAll('#tour, #models, #control, #chat, #download').forEach((s) => sectionIO.observe(s))
+
+// Scroll-linked: the floating app windows drift against their panels, and the big one grows into place.
+const floats = [...document.querySelectorAll('.app.float')]
+const stageApp = $('.stage .app')
+let ticking = false
+function onScroll() {
+  ticking = false
+  const vh = innerHeight
+  const show = scrollY > vh * 0.6
+  dock.classList.toggle('on', show)
+  dock.inert = !show
+  if (reduceMotion || innerWidth <= 900) return
+  for (const el of floats) {
+    const r = el.parentElement.getBoundingClientRect()
+    if (r.bottom < 0 || r.top > vh) continue
+    const p = (r.top + r.height / 2 - vh / 2) / vh
+    el.style.translate = `0 ${(p * -48).toFixed(1)}px`
+  }
+  if (stageApp) {
+    const r = stageApp.getBoundingClientRect()
+    if (r.top < vh && r.bottom > 0) {
+      const p = Math.min(1, Math.max(0, (vh - r.top) / (vh * 0.75)))
+      stageApp.style.scale = (0.9 + 0.1 * p).toFixed(4)
+    }
+  }
+}
+addEventListener('scroll', () => ticking || ((ticking = true), requestAnimationFrame(onScroll)), { passive: true })
+addEventListener('resize', onScroll)
+onScroll()
+
+// The floating app windows lean toward the pointer.
+if (!reduceMotion && matchMedia('(hover: hover)').matches) {
+  document.querySelectorAll('.split-art').forEach((art) => {
+    const win = art.querySelector('.app.float')
+    art.addEventListener('pointermove', (e) => {
+      const r = art.getBoundingClientRect()
+      const x = (e.clientX - r.left) / r.width - 0.5
+      const y = (e.clientY - r.top) / r.height - 0.5
+      win.style.transform = `perspective(1400px) rotateX(${(-y * 5).toFixed(2)}deg) rotateY(${(x * 7).toFixed(2)}deg)`
+    })
+    art.addEventListener('pointerleave', () => (win.style.transform = ''))
+  })
+}

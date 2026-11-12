@@ -17,6 +17,8 @@
   --tag-bg: rgba(42, 154, 88, 0.14);
   --tag-fg: #1d6b3d;
   --select: #cfeedd;
+  --spot: rgba(42, 154, 88, 0.11);
+  --ease: cubic-bezier(.2, .8, .2, 1);
   --mark-face: var(--bg);
   --radius: 22px;
   --gap: 12px;
@@ -45,6 +47,7 @@
   --tag-bg: rgba(92, 201, 131, 0.16);
   --tag-fg: #8ee0a5;
   --select: #1f5c3a;
+  --spot: rgba(94, 214, 126, 0.1);
   color-scheme: dark;
 }
 
@@ -155,7 +158,7 @@ code, pre, kbd { font-family: var(--mono); }
   backdrop-filter: blur(18px) saturate(1.2);
   box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 40px 80px -24px rgba(0,0,0,.55);
   color: #d9d6d0;
-  animation: rise .9s .1s cubic-bezier(.2,.7,.2,1) backwards;
+  animation: rise 1s .75s var(--ease) backwards;
 }
 .term-bar { display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,.07); }
 .term-bar i { width: 12px; height: 12px; border-radius: 50%; background: #4a4845; }
@@ -175,7 +178,7 @@ code, pre, kbd { font-family: var(--mono); }
 }
 .copy:hover { background: rgba(255,255,255,.16); }
 
-@keyframes rise { from { transform: translateY(14px); } }
+@keyframes rise { from { opacity: 0; transform: translateY(26px) scale(.97); } }
 
 /* ---------- 2. stage ---------- */
 .frame.stage { margin-inline: var(--gap); padding: clamp(64px, 8vw, 128px) clamp(16px, 6vw, 112px) 0; }
@@ -335,3 +338,99 @@ code, pre, kbd { font-family: var(--mono); }
 }
 
 [data-theme="dark"] .panel:has(> [data-palette="ink"]), [data-theme="dark"] .code { box-shadow: inset 0 0 0 1px rgba(255, 255, 250, .08); }
+
+/* ================= motion ================= */
+
+/* ---- load: the hero assembles itself ---- */
+@keyframes up { from { opacity: 0; transform: translateY(18px); } }
+@keyframes down { from { opacity: 0; transform: translateY(-12px); } }
+@keyframes unveil { from { opacity: 0; clip-path: inset(9% 9% 9% 9% round 56px); } to { clip-path: inset(0 round var(--radius)); } }
+@keyframes settle { from { transform: scale(1.14); } }
+@keyframes caret { 50% { opacity: 0; } }
+@keyframes pan { to { background-position: 0 0, 100% 50%; } }
+
+.hero-bar { animation: down .9s .1s var(--ease) backwards; }
+.hero-main .lede { animation: up 1s .5s var(--ease) backwards; }
+.hero-main .cta { animation: up 1s .62s var(--ease) backwards; }
+.hero .routes { animation: up 1s .78s var(--ease) backwards; }
+.hero-art { animation: unveil 1.4s .05s var(--ease) backwards; }
+.hero-art .shader { animation: settle 2.2s .05s var(--ease) backwards; }
+
+.term .out { transition: opacity .5s ease, transform .5s var(--ease); display: inline-block; }
+.term .out.wait { opacity: 0; transform: translateY(6px); }
+#cmd-install.typing::after { content: ""; display: inline-block; width: .55em; height: 1.1em; margin-left: 2px; vertical-align: -0.18em; background: #e9c48f; animation: caret 1s steps(1) infinite; }
+
+/* ---- headlines rise line by line ---- */
+.split-lines .line { display: block; overflow: hidden; padding-bottom: .14em; margin-bottom: -.14em; }
+.split-lines .line-in { display: block; }
+.js .split-lines .line-in { transform: translateY(112%); transition: transform 1.15s var(--ease); transition-delay: calc(var(--i) * 110ms + 80ms); }
+.js .split-lines.in .line-in { transform: none; }
+.js .split-lines.reveal { opacity: 1; transform: none; }
+
+/* ---- panels open out as they scroll in ---- */
+.js .reveal.clip { transform: none; clip-path: inset(7% 7% 7% 7% round 56px); transition: opacity .7s ease, clip-path 1.4s var(--ease); }
+.js .reveal.clip.in { clip-path: inset(0 round var(--radius)); }
+.js .reveal.clip > .shader { transform: scale(1.16); transition: transform 2.2s var(--ease); }
+.js .reveal.clip.in > .shader { transform: none; }
+
+.js .giant.reveal { opacity: 1; transform: translateY(48px); clip-path: inset(-12% 100% -12% -4%); transition: clip-path 1.7s var(--ease), transform 1.7s var(--ease); }
+.js .giant.reveal.in { transform: none; clip-path: inset(-12% -4% -12% -4%); }
+#giant-text { animation: pan 18s ease-in-out infinite alternate; }
+
+.stage .app { transform-origin: 50% 0; }
+.app.float { transition: transform .5s ease-out; will-change: transform; }
+
+/* ---- theme change spreads from the toggle ---- */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: theme-wipe .7s cubic-bezier(.4, 0, .2, 1); }
+@keyframes theme-wipe { from { clip-path: circle(0 at var(--vx, 50%) var(--vy, 0)); } to { clip-path: circle(150vmax at var(--vx, 50%) var(--vy, 0)); } }
+
+/* ================= interactions ================= */
+
+/* cards light up under the pointer */
+.card { position: relative; overflow: hidden; }
+.card > * { position: relative; }
+.card::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .45s ease; background: radial-gradient(440px circle at var(--mx, 50%) var(--my, 50%), var(--spot), transparent 65%); }
+.card:hover::before { opacity: 1; }
+
+/* permission modes are a picker */
+.chips-lg li, .chips-lg li:hover { background: none; padding: 0; transform: none; }
+.chips-lg button { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; background: var(--tile); border-radius: 14px; padding: 16px 18px; transition: background-color .25s ease, color .25s ease, transform .25s var(--ease); }
+.chips-lg button:hover { background: var(--tile-hover); transform: translateY(-2px); }
+.chips-lg button:focus-visible { outline: 2px solid var(--frog); outline-offset: 2px; }
+.chips-lg button[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-fg); }
+.chips-lg button[aria-pressed="true"] span { color: inherit; opacity: .6; }
+.card .mode-desc { margin-top: 18px; min-height: 3.1em; color: var(--ink-2); font-size: 15px; }
+kbd { display: inline-block; min-width: 1.6em; padding: 1px 6px; margin: 0 1px; border-radius: 6px; background: var(--tile); color: var(--ink-2); font-size: 12px; text-align: center; }
+
+/* floating bar */
+.dock {
+  position: fixed; z-index: 50; top: 14px; left: 50%;
+  display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 18px; border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 76%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow: 0 0 0 1px var(--line), 0 14px 36px -14px rgba(0, 0, 0, .3);
+  transform: translate(-50%, -160%); opacity: 0;
+  transition: transform .7s var(--ease), opacity .4s ease;
+  --mark-face: var(--paper);
+}
+.dock.on { transform: translate(-50%, 0); opacity: 1; }
+.dock .brand { font-size: 19px; gap: 8px; margin-right: 8px; }
+.dock .mark { width: 24px; height: 13px; }
+.dock nav { display: flex; }
+.dock nav a { padding: 9px 12px; border-radius: 999px; font-size: 14px; color: var(--dim); transition: color .2s, background-color .2s; }
+.dock nav a:hover, .dock nav a.on { color: var(--ink); }
+.dock nav a.on { background: var(--tile); }
+.dock .theme-toggle:hover { background: var(--tile); color: var(--ink); }
+.dock .btn { height: 38px; padding: 0 16px; border-radius: 999px; font-size: 14px; }
+section[id] { scroll-margin-top: 76px; }
+
+@media (max-width: 620px) {
+  .dock nav { display: none; }
+  .dock { padding-left: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-bar, .hero-main .lede, .hero-main .cta, .hero .routes, .hero-art, .hero-art .shader, #giant-text { animation: none; }
+  .js .split-lines .line-in, .js .reveal.clip, .js .reveal.clip > .shader, .js .giant.reveal { transform: none; clip-path: none; transition: none; }
+  .dock { transition: none; }
+}
