@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- The social sharing card, 1200x630. Drawn with the website's own stylesheet and shader so it tracks the design.
+     Rendered to web/assets/og.jpg by scripts/make-og.mjs. -->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" />
+<link rel="stylesheet" href="/styles.css" />
+<style>
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  .og { display: grid; grid-template-columns: 548px minmax(0, 1fr); gap: 12px; height: 630px; padding: 12px; }
+  .og-copy { display: flex; flex-direction: column; padding: 36px 20px 34px 40px; }
+  .brand { font-size: 34px; gap: 13px; }
+  .mark { width: 41px; height: 22px; }
+  .display { margin: auto 0; font-size: 73px; letter-spacing: -0.045em; text-wrap: nowrap; }
+  .routes { grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 0; padding-top: 24px; }
+  .routes dt { font-size: 17px; }
+  .routes dd { margin-top: 5px; font-size: 16px; }
+  .og-art { display: grid; place-items: center; }
+  .term { width: 87%; }
+  .term-body { padding: 24px 26px 30px; font-size: 15.5px; line-height: 1.9; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="frog" viewBox="0 0 15 8"><path d="M1 0h5v2h-5zM9 0h5v2h-5zM0 2h15v4h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/><g style="fill:var(--mark-face)"><rect x="3" y="1" width="1" height="2"/><rect x="11" y="1" width="1" height="2"/><rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></symbol>
+</svg>
+
+<div class="og">
+  <div class="og-copy">
+    <span class="brand"><svg class="mark" shape-rendering="crispEdges"><use href="#frog"/></svg>Croo</span>
+    <h1 class="display">A coding agent<br /><span class="dim">with a frog in it.</span></h1>
+    <dl class="routes">
+      <div><dt>your plan</dt><dd>Claude, ChatGPT</dd></div>
+      <div><dt>your keys</dt><dd>Nine providers</dd></div>
+      <div><dt>your Mac</dt><dd>Local models</dd></div>
+    </dl>
+  </div>
+
+  <div class="og-art panel">
+    <canvas class="shader" data-mode="fluted" data-palette="frog"></canvas>
+    <div class="term">
+      <div class="term-bar"><i></i><i></i><i></i><span>Terminal</span></div>
+      <pre class="term-body"><span class="k">curl</span> <span id="cmd-install">-fsSL https://ai.crooli.com/install.sh | bash</span>
+
+<span class="c">→ Downloading Croo for Apple Silicon</span>
+<span class="c">→ Installing into /Applications</span>
+<span class="ok">✓ Opened Croo.app</span></pre>
+    </div>
+  </div>
+</div>
+
+<script src="/site.js"></script>
+</body>
+</html>

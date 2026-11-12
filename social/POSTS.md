@@ -172,4 +172,4 @@ https://ai.crooli.com
 | still-agent / permissions / git / models / outro.png | 1920x1080 frames from the video | <1 MB each |
 | screenshot-git-dark.png, screenshot-chat-light.png, screenshot-settings.png | App screenshots | <0.4 MB each |
 | croo-frog-icon.png | 1024x1024 pixel frog | 14 KB |
-| og-card.jpg | 1200x630 site card | 119 KB |
+| og-card.jpg | 1200x630 site card | 125 KB |
