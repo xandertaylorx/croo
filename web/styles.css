@@ -253,9 +253,9 @@ code, pre, kbd { font-family: var(--mono); }
 .giant {
   margin: clamp(40px, 8vw, 120px) 0 clamp(40px, 8vw, 120px);
   text-align: center;
-  font: 600 clamp(64px, 16.5vw, 320px)/0.9 var(--display);
+  font: 600 clamp(60px, 15.5vw, 300px)/0.9 var(--display);
   white-space: nowrap;
-  letter-spacing: -0.065em;
+  letter-spacing: -0.03em;
 }
 #giant-text {
   display: inline-block; padding: 0 .06em .08em;
