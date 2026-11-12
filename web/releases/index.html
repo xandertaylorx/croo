@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Releases · Croo</title>
+<meta name="description" content="Every Croo release with its downloads, sizes and highlights, straight from GitHub." />
+<meta name="theme-color" content="#f5f5f3" />
+<script>try{if(localStorage.getItem("croo.theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}</script>
+<link rel="icon" href="/assets/icon.png" />
+<link rel="canonical" href="https://ai.crooli.com/releases" />
+<meta property="og:title" content="Releases · Croo" />
+<meta property="og:description" content="Every Croo release with its downloads, sizes and highlights, straight from GitHub." />
+<meta property="og:image" content="https://ai.crooli.com/assets/og.jpg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="sub" data-page="releases">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="frog" viewBox="0 0 15 8"><path d="M1 0h5v2h-5zM9 0h5v2h-5zM0 2h15v4h-15zM1 6h13v1h-13zM2 7h2v1h-2zM11 7h2v1h-2z"/><g style="fill:var(--mark-face)"><rect x="3" y="1" width="1" height="2"/><rect x="11" y="1" width="1" height="2"/><rect x="4" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="5" y="5" width="5" height="1"/></g></symbol>
+</svg>
+
+<main>
+  <section class="frame subhero">
+    <div class="subhero-copy">
+      <header class="hero-bar">
+        <a class="brand" href="/" aria-label="Croo home"><svg class="mark" shape-rendering="crispEdges"><use href="#frog"/></svg>Croo</a>
+        <nav class="pillnav" aria-label="Main">
+          <a href="/releases" aria-current="page">Releases</a><a href="/changelog">Changelog</a>
+          <a href="https://github.com/xandertaylorx/croo" rel="noopener">GitHub</a>
+          <button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg></button>
+        </nav>
+      </header>
+      <div class="subhero-main">
+        <p class="eyebrow">Pulled live from GitHub</p>
+        <h1 class="display">Releases.<br /><span class="dim">Every version of Croo.</span></h1>
+        <p class="lede">Each build with its downloads and the headline changes. The full story of every version is in the changelog.</p>
+      </div>
+    </div>
+    <div class="subhero-art panel">
+      <canvas class="shader" data-mode="fluted" data-palette="lapis" aria-hidden="true"></canvas>
+      <div class="latest" id="latest" aria-live="polite"><span class="skeleton w60"></span><span class="skeleton w40"></span></div>
+    </div>
+  </section>
+
+  <section class="frame stats" id="stats" aria-label="Release stats"></section>
+
+  <section class="frame rel-list" aria-label="All releases">
+    <ol id="releases" class="releases">
+      <li class="rel skeleton-row"><span class="skeleton w40"></span><span class="skeleton w80"></span></li>
+      <li class="rel skeleton-row"><span class="skeleton w40"></span><span class="skeleton w80"></span></li>
+    </ol>
+    <p class="fine center" id="rel-note"></p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Croo · MIT · made with a frog</span>
+  <nav aria-label="Links">
+    <a href="/">Home</a>
+    <a href="/releases">Releases</a>
+    <a href="/changelog">Changelog</a>
+    <a href="https://github.com/xandertaylorx/croo">GitHub</a>
+  </nav>
+</footer>
+
+<script src="/site.js"></script>
+<script src="/releases.js"></script>
+</body>
+</html>
