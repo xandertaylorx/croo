@@ -184,6 +184,11 @@ let ticking = false
 function onScroll() {
   ticking = false
   const vh = innerHeight
+  // Fallback for the reveal observer: anything already on screen gets shown, even if an observer callback was missed.
+  for (const el of document.querySelectorAll('.reveal:not(.in)')) {
+    const r = el.getBoundingClientRect()
+    if (r.top < vh && r.bottom > 0) el.classList.add('in')
+  }
   const show = scrollY > vh * 0.6
   dock.classList.toggle('on', show)
   dock.inert = !show
