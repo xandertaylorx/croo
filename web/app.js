@@ -75,6 +75,18 @@ revealables.forEach((el, i) => {
   rio.observe(el)
 })
 
+// Fallback for the observer, which only reports on rendered frames (and a browser can skip those): anything on
+// screen that hasn't appeared yet is shown. It also runs on a timer, so it doesn't depend on frames either.
+function revealVisible() {
+  const pending = document.querySelectorAll('.reveal:not(.in)')
+  for (const el of pending) {
+    const r = el.getBoundingClientRect()
+    if (r.top < innerHeight && r.bottom > 0) el.classList.add('in')
+  }
+  return pending.length
+}
+const revealTimer = setInterval(() => revealVisible() || clearInterval(revealTimer), 700)
+
 /* ---------------- GitHub: release and stars ---------------- */
 
 
@@ -184,11 +196,7 @@ let ticking = false
 function onScroll() {
   ticking = false
   const vh = innerHeight
-  // Fallback for the reveal observer: anything already on screen gets shown, even if an observer callback was missed.
-  for (const el of document.querySelectorAll('.reveal:not(.in)')) {
-    const r = el.getBoundingClientRect()
-    if (r.top < vh && r.bottom > 0) el.classList.add('in')
-  }
+  revealVisible()
   const show = scrollY > vh * 0.6
   dock.classList.toggle('on', show)
   dock.inert = !show
