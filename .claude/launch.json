@@ -4,8 +4,29 @@
     {
       "name": "remotion-studio",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "video", "run", "studio", "--", "--port", "3123", "--no-open"],
+      "runtimeArgs": [
+        "--prefix",
+        "video",
+        "run",
+        "studio",
+        "--",
+        "--port",
+        "3123",
+        "--no-open"
+      ],
       "port": 3123
+    },
+    {
+      "name": "website",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4173",
+        "--directory",
+        "web"
+      ],
+      "port": 4173
     }
   ]
 }
