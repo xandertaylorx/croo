@@ -94,7 +94,7 @@ function showRelease(rel) {
   const version = rel.tag_name.replace(/^v/, '')
   const dmgs = (rel.assets || []).filter((a) => /\.dmg$/i.test(a.name))
   const arm = dmgs.find((a) => /arm64/i.test(a.name)) || dmgs[0]
-  document.querySelectorAll('.term .ver').forEach((el) => (el.textContent = `v${version}`))
+  document.querySelectorAll('.term .term-ver').forEach((el) => (el.textContent = `v${version}`))
   const giantVer = $('#giant-ver')
   if (giantVer) giantVer.textContent = version.split('.').slice(0, 2).join('.')
   $('#rel-notes').href = `/changelog#v${version}`

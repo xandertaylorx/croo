@@ -169,7 +169,7 @@ code, pre, kbd { font-family: var(--mono); }
 .term-body #cmd-install { color: #e9c48f; }
 .term-body .c { color: #8f8b85; }
 .term-body .ok { color: #8fd8a0; }
-.term-body .ver { color: #e9c48f; }
+.term-body .term-ver { color: #e9c48f; }
 
 .copy {
   height: 30px; padding: 0 12px; border-radius: 8px; border: 0;
